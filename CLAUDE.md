@@ -26,3 +26,7 @@ flutter build apk            # Android build
 The codebase currently consists of a single entry point, [lib/main.dart](lib/main.dart) — there is no state management, networking, or navigation layer yet. Those are tracked as foundational epics (issues [#1](https://github.com/ryanmac8/trek-native-app/issues/1) and [#2](https://github.com/ryanmac8/trek-native-app/issues/2)) and should be established before feature work builds on top of them, since every other epic depends on them.
 
 Trek's backend data model (Trip → Day → Assignment → Place, plus Accommodation, Reservation, Budget, Packing, Todo, Tags, Collaboration, Atlas, Vacay, Journey) is documented per-feature in the GitHub issues — see [docs/ROADMAP.md](docs/ROADMAP.md) for the summarized version.
+
+## Backend reference
+
+Trek's actual backend/frontend lives at [github.com/liketrek/TREK](https://github.com/liketrek/TREK) (self-hosted NestJS/Express server under `server/`, web PWA client under `client/`) — this is the source of truth for API contracts and should be checked, not guessed at, before implementing anything that talks to it: endpoint paths, request/response JSON shapes, auth flow, error formats, etc. (e.g. `server/src/nest/auth/` for the login/session/MFA contract). Note that Trek is self-hosted, not a single vendor-run API — there's no fixed production URL to point this app at by default.
