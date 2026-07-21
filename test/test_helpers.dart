@@ -6,6 +6,7 @@ import 'package:trek/auth/token_storage.dart';
 import 'package:trek/config/server_config.dart';
 import 'package:trek/days/day.dart';
 import 'package:trek/days/days_local_store.dart';
+import 'package:trek/features/trips/trip_dashboard_nav_layout_store.dart';
 import 'package:trek/trips/trip.dart';
 import 'package:trek/trips/trips_local_store.dart';
 
@@ -122,4 +123,22 @@ class InMemoryDaysLocalStore implements DaysLocalStore {
   @override
   Future<void> write(String tripId, List<Day> days) async =>
       _daysByTripId[tripId] = List.of(days);
+}
+
+/// In-memory [TripDashboardNavLayoutStore] fake — avoids the
+/// `shared_preferences` platform channel in widget tests.
+class InMemoryTripDashboardNavLayoutStore
+    implements TripDashboardNavLayoutStore {
+  InMemoryTripDashboardNavLayoutStore({List<String?>? initial})
+    : _slotKeys = initial;
+
+  List<String?>? _slotKeys;
+
+  @override
+  Future<List<String?>?> read() async =>
+      _slotKeys == null ? null : List.of(_slotKeys!);
+
+  @override
+  Future<void> write(List<String?> slotKeys) async =>
+      _slotKeys = List.of(slotKeys);
 }
