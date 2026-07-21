@@ -45,5 +45,7 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Trek uses your location to detect which Wi-Fi network you're on, so it can automatically switch to your home server's local address instead of its public one.</string>
 </dict>
 </plist>

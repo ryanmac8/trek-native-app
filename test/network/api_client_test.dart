@@ -34,6 +34,26 @@ void main() {
       expect(result, {'trips': []});
     });
 
+    test(
+      'resolves the base URL fresh from getBaseUrl on every request',
+      () async {
+        var currentBaseUrl = 'https://public.example.com';
+        final client = ApiClient(
+          getBaseUrl: () async => currentBaseUrl,
+          httpClient: MockClient((request) async {
+            return _json({'host': request.url.host}, 200);
+          }),
+        );
+
+        final first = await client.get('/api/trips');
+        expect(first, {'host': 'public.example.com'});
+
+        currentBaseUrl = 'http://192.168.1.50:3000';
+        final second = await client.get('/api/trips');
+        expect(second, {'host': '192.168.1.50'});
+      },
+    );
+
     test('attaches a bearer token when getAccessToken is provided', () async {
       final client = ApiClient(
         baseUrl: 'https://trek.example.com',

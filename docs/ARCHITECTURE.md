@@ -6,7 +6,7 @@
 - **Platforms:** iOS and Android only. The `linux/`, `macos/`, `windows/`, and `web/` folders `flutter create` generates by default were removed and should stay out.
 - **Package:** `com.trek.trek` (org `com.trek`, project name `trek`).
 - **Backend:** Trek's existing backend/API (the same one the web PWA and its MCP server talk to). This app is a new client, not a new backend.
-- **Server config:** Trek is self-hosted, not a vendor-run API. The app points at a user-entered server URL rather than fixed dev/staging/prod environments. See [networking-auth.md](networking-auth.md).
+- **Server config:** Trek is self-hosted, not a vendor-run API. The app points at user-entered public/private server URLs (switching to the private one on trusted Wi-Fi networks) rather than fixed dev/staging/prod environments. See [networking-auth.md](networking-auth.md).
 - **Offline-first:** a cross-cutting design principle, not Phase 3-only work — every feature that reads or writes trip data is designed assuming the network may be unavailable. See [offline-first.md](offline-first.md).
 
 ## Open / not yet built

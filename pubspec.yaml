@@ -45,6 +45,9 @@ dependencies:
   # secret, so this is deliberately separate from flutter_secure_storage.
   shared_preferences: ^2.3.3
 
+  # Current Wi-Fi SSID, used to pick the private vs. public server URL.
+  network_info_plus: ^6.1.4
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

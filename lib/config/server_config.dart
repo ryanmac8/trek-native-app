@@ -1,22 +1,43 @@
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// The Trek server instance this app talks to.
+/// The Trek server instance(s) this app talks to.
 ///
-/// Trek is self-hosted ("Your trips. Your plan. Your server.") — there is no
-/// fixed vendor-run API like `api.trek.app`. Each user points the app at
-/// their own running instance, the same way Nextcloud or Immich clients
-/// work, so this is a single user-entered URL rather than a set of fixed
-/// dev/staging/prod constants.
+/// Trek is self-hosted — there is no fixed vendor API URL. [publicUrl] is
+/// always reachable (a domain behind a reverse proxy, dynamic DNS, etc.).
+/// [privateUrl] is an optional local-network address (e.g.
+/// `http://192.168.1.50:3000`) used only while the device is connected to
+/// one of [trustedWifiNetworks] — the same "internal URL" pattern apps like
+/// Home Assistant use to switch to a LAN address at home.
 class ServerConfig {
-  const ServerConfig({required this.baseUrl});
+  const ServerConfig({
+    required this.publicUrl,
+    this.privateUrl,
+    this.trustedWifiNetworks = const {},
+  });
 
-  final String baseUrl;
+  final String publicUrl;
+  final String? privateUrl;
 
-  /// Parses and normalizes user input (e.g. from a "server address" field)
-  /// into a [ServerConfig]. Requires an absolute `http`/`https` URL and
-  /// strips any trailing slash so it composes cleanly with [ApiClient]'s
-  /// paths (which always start with `/`).
-  factory ServerConfig.parse(String input) {
+  /// Wi-Fi SSIDs on which [privateUrl] should be used instead of
+  /// [publicUrl]. Empty means always use [publicUrl].
+  final Set<String> trustedWifiNetworks;
+
+  /// Picks [privateUrl] when [currentSsid] matches a trusted network and a
+  /// private URL is configured; otherwise falls back to [publicUrl].
+  String resolveBaseUrl(String? currentSsid) {
+    final private = privateUrl;
+    if (private != null &&
+        currentSsid != null &&
+        trustedWifiNetworks.contains(currentSsid)) {
+      return private;
+    }
+    return publicUrl;
+  }
+
+  /// Validates and normalizes a user-entered server address (used for both
+  /// [publicUrl] and [privateUrl]): requires an absolute `http`/`https` URL,
+  /// strips a trailing slash. Throws [FormatException] otherwise.
+  static String validateUrl(String input) {
     final trimmed = input.trim();
     final uri = Uri.tryParse(trimmed);
     final isValid =
@@ -26,13 +47,12 @@ class ServerConfig {
         uri.host.isNotEmpty;
     if (!isValid) {
       throw const FormatException(
-        'Enter your Trek server\'s full address, e.g. https://trek.example.com',
+        'Enter a full server address, e.g. https://trek.example.com',
       );
     }
-    final normalized = trimmed.endsWith('/')
+    return trimmed.endsWith('/')
         ? trimmed.substring(0, trimmed.length - 1)
         : trimmed;
-    return ServerConfig(baseUrl: normalized);
   }
 }
 
@@ -43,31 +63,53 @@ abstract class ServerConfigStorage {
   Future<void> clear();
 }
 
-/// Stores the server URL in plain local storage (`shared_preferences`) —
-/// unlike the session token, it isn't a secret, so it doesn't need the
+/// Stores the server config in plain local storage (`shared_preferences`) —
+/// unlike the session token, none of it is a secret, so it doesn't need the
 /// Keychain/Keystore-backed `SecureTokenStorage`.
 class PreferencesServerConfigStorage implements ServerConfigStorage {
   PreferencesServerConfigStorage({SharedPreferencesAsync? preferences})
     : _preferences = preferences ?? SharedPreferencesAsync();
 
-  static const _baseUrlKey = 'trek.server.base_url';
+  static const _publicUrlKey = 'trek.server.public_url';
+  static const _privateUrlKey = 'trek.server.private_url';
+  static const _trustedWifiNetworksKey = 'trek.server.trusted_wifi_networks';
 
   final SharedPreferencesAsync _preferences;
 
   @override
   Future<ServerConfig?> read() async {
-    final baseUrl = await _preferences.getString(_baseUrlKey);
-    if (baseUrl == null) return null;
-    return ServerConfig(baseUrl: baseUrl);
+    final publicUrl = await _preferences.getString(_publicUrlKey);
+    if (publicUrl == null) return null;
+    final privateUrl = await _preferences.getString(_privateUrlKey);
+    final trustedWifiNetworks = await _preferences.getStringList(
+      _trustedWifiNetworksKey,
+    );
+    return ServerConfig(
+      publicUrl: publicUrl,
+      privateUrl: privateUrl,
+      trustedWifiNetworks: trustedWifiNetworks?.toSet() ?? const {},
+    );
   }
 
   @override
-  Future<void> write(ServerConfig config) {
-    return _preferences.setString(_baseUrlKey, config.baseUrl);
+  Future<void> write(ServerConfig config) async {
+    await _preferences.setString(_publicUrlKey, config.publicUrl);
+    final privateUrl = config.privateUrl;
+    if (privateUrl != null) {
+      await _preferences.setString(_privateUrlKey, privateUrl);
+    } else {
+      await _preferences.remove(_privateUrlKey);
+    }
+    await _preferences.setStringList(
+      _trustedWifiNetworksKey,
+      config.trustedWifiNetworks.toList(),
+    );
   }
 
   @override
-  Future<void> clear() {
-    return _preferences.remove(_baseUrlKey);
+  Future<void> clear() async {
+    await _preferences.remove(_publicUrlKey);
+    await _preferences.remove(_privateUrlKey);
+    await _preferences.remove(_trustedWifiNetworksKey);
   }
 }
