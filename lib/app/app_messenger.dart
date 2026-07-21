@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../design/app_colors.dart';
 
@@ -16,7 +17,10 @@ enum AppMessageType { error, success, info }
 /// message next to its field — should stay inline instead; this is for
 /// messages with no such spot.
 abstract final class AppMessenger {
-  static void showError(String message) => _show(message, AppMessageType.error);
+  static void showError(String message) {
+    _buzzTwice();
+    _show(message, AppMessageType.error);
+  }
 
   static void showSuccess(String message) =>
       _show(message, AppMessageType.success);
@@ -24,6 +28,14 @@ abstract final class AppMessenger {
   static void showInfo(String message) => _show(message, AppMessageType.info);
 
   static const _maxMountRetries = 5;
+
+  /// Two quick pulses read as distinctly "something's wrong" — one buzz is
+  /// too easily missed/confused with a routine tap response.
+  static Future<void> _buzzTwice() async {
+    await HapticFeedback.vibrate();
+    await Future.delayed(const Duration(milliseconds: 120));
+    await HapticFeedback.vibrate();
+  }
 
   static void _show(String message, AppMessageType type, [int retry = 0]) {
     final messengerState = scaffoldMessengerKey.currentState;

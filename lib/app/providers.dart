@@ -6,9 +6,12 @@ import '../auth/biometric_auth_service.dart';
 import '../auth/token_storage.dart';
 import '../config/server_config.dart';
 import '../config/server_config_resolver.dart';
+import '../config/server_health_check.dart';
 import '../config/wifi_network_info.dart';
 import '../network/api_client.dart';
 import '../trips/trips_api.dart';
+import '../trips/trips_local_store.dart';
+import '../trips/trips_repository.dart';
 import 'app_lock_state.dart';
 import 'router.dart';
 
@@ -21,6 +24,12 @@ final serverConfigStorageProvider = Provider<ServerConfigStorage>(
 
 final wifiNetworkInfoProvider = Provider<WifiNetworkInfo>(
   (ref) => DeviceWifiNetworkInfo(),
+);
+
+/// Pings a candidate private endpoint's `/api/health` before it's saved —
+/// see `NetworkingSettingsScreen`'s add-endpoint dialog.
+final serverHealthCheckProvider = Provider<ServerHealthCheck>(
+  (ref) => ServerHealthCheck(),
 );
 
 final serverConfigResolverProvider = Provider<ServerConfigResolver>((ref) {
@@ -69,6 +78,20 @@ final biometricAuthServiceProvider = Provider<BiometricAuthService>(
 
 final tripsApiProvider = Provider<TripsApi>((ref) {
   return TripsApi(apiClient: ref.watch(apiClientProvider));
+});
+
+/// Local (non-secure) cache of the trip list — see docs/offline-first.md.
+/// A minimal, scoped-to-trips stand-in for the full local-persistence
+/// mechanism issue #21 will decide on for the whole data model.
+final tripsLocalStoreProvider = Provider<TripsLocalStore>(
+  (ref) => PreferencesTripsLocalStore(),
+);
+
+final tripsRepositoryProvider = Provider<TripsRepository>((ref) {
+  return TripsRepository(
+    tripsApi: ref.watch(tripsApiProvider),
+    localStore: ref.watch(tripsLocalStoreProvider),
+  );
 });
 
 /// Single long-lived instance for the app run — see [AppLockState].

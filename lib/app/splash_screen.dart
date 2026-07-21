@@ -17,7 +17,7 @@ class SplashScreen extends StatefulWidget {
 
 class _SplashScreenState extends State<SplashScreen>
     with TickerProviderStateMixin {
-  late final AnimationController _starController;
+  late final AnimationController _flightController;
   late final AnimationController _revealController;
   late final List<_Star> _stars;
 
@@ -25,10 +25,15 @@ class _SplashScreenState extends State<SplashScreen>
   void initState() {
     super.initState();
     _stars = List.generate(36, (i) => _Star.random(Random(i)));
-    _starController = AnimationController(
+    // A long, non-reversing, repeating controller whose value (0..1) maps
+    // linearly to real elapsed seconds — driving both the twinkle and the
+    // continuous drift below. Long enough that the loop-back-to-0 seam is
+    // never actually seen (the splash is on screen for a couple of seconds
+    // at most).
+    _flightController = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 3),
-    )..repeat(reverse: true);
+      duration: const Duration(seconds: _flightDurationSeconds),
+    )..repeat();
     _revealController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 900),
@@ -37,7 +42,7 @@ class _SplashScreenState extends State<SplashScreen>
 
   @override
   void dispose() {
-    _starController.dispose();
+    _flightController.dispose();
     _revealController.dispose();
     super.dispose();
   }
@@ -68,7 +73,7 @@ class _SplashScreenState extends State<SplashScreen>
           CustomPaint(
             painter: _StarFieldPainter(
               stars: _stars,
-              animation: _starController,
+              animation: _flightController,
             ),
           ),
           Center(
@@ -111,6 +116,15 @@ class _SplashScreenState extends State<SplashScreen>
   }
 }
 
+const int _flightDurationSeconds = 3600;
+
+/// Every star drifts diagonally (down and slightly left) rather than in
+/// random directions — a shared heading reads as "flying through" a
+/// starfield instead of stars scattering like confetti. Applied as a
+/// multiple of each star's own [_Star.verticalSpeed] so nearer/farther
+/// stars stay on the same diagonal.
+const double _horizontalDriftRatio = -0.3;
+
 class _Star {
   const _Star({
     required this.dx,
@@ -118,15 +132,21 @@ class _Star {
     required this.radius,
     required this.baseOpacity,
     required this.phase,
+    required this.verticalSpeed,
   });
 
   factory _Star.random(Random random) {
+    final isNear = random.nextBool();
     return _Star(
       dx: random.nextDouble(),
       dy: random.nextDouble(),
-      radius: random.nextBool() ? 1.5 : 1.0,
+      radius: isNear ? 1.5 : 1.0,
       baseOpacity: 0.15 + random.nextDouble() * 0.35,
       phase: random.nextDouble() * pi * 2,
+      // Bigger stars drift faster — reads as closer/nearer, giving the
+      // field a sense of depth (parallax) rather than flat uniform motion.
+      verticalSpeed:
+          (isNear ? 0.045 : 0.022) * (0.75 + random.nextDouble() * 0.6),
     );
   }
 
@@ -135,6 +155,9 @@ class _Star {
   final double radius;
   final double baseOpacity;
   final double phase;
+
+  /// Fraction of screen height this star drifts downward per second.
+  final double verticalSpeed;
 }
 
 class _StarFieldPainter extends CustomPainter {
@@ -147,14 +170,22 @@ class _StarFieldPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()..color = Colors.white;
-    final t = animation.value;
+    final elapsedSeconds = animation.value * _flightDurationSeconds;
     for (final star in stars) {
-      final twinkle = 0.5 + 0.5 * sin(t * pi * 2 + star.phase);
+      final twinkle =
+          0.5 + 0.5 * sin(elapsedSeconds * (2 * pi / 3) + star.phase);
       paint.color = Colors.white.withValues(
         alpha: star.baseOpacity + twinkle * 0.2,
       );
+
+      final dy = (star.dy + elapsedSeconds * star.verticalSpeed) % 1.0;
+      final dx =
+          (star.dx +
+              elapsedSeconds * star.verticalSpeed * _horizontalDriftRatio) %
+          1.0;
+
       canvas.drawCircle(
-        Offset(star.dx * size.width, star.dy * size.height),
+        Offset((dx + 1.0) % 1.0 * size.width, (dy + 1.0) % 1.0 * size.height),
         star.radius,
         paint,
       );

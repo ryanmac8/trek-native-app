@@ -8,6 +8,9 @@ import '../features/auth/login_screen.dart';
 import '../features/auth/mfa_screen.dart';
 import '../features/auth/reconnect_screen.dart';
 import '../features/server_setup/server_setup_screen.dart';
+import '../features/settings/networking_settings_screen.dart';
+import '../features/settings/settings_screen.dart';
+import '../features/trips/create_trip_screen.dart';
 import '../features/trips/trip_dashboard_screen.dart';
 import '../features/trips/trip_list_screen.dart';
 import 'app_lock_state.dart';
@@ -74,6 +77,16 @@ GoRouter buildAppRouter({
         path: '/reconnect',
         builder: (context, state) => const ReconnectScreen(),
       ),
+      GoRoute(
+        path: '/settings',
+        builder: (context, state) => const SettingsScreen(),
+        routes: [
+          GoRoute(
+            path: 'networking',
+            builder: (context, state) => const NetworkingSettingsScreen(),
+          ),
+        ],
+      ),
       ShellRoute(
         builder: (context, state, child) =>
             SyncStatusShell(authService: authService, child: child),
@@ -81,6 +94,12 @@ GoRouter buildAppRouter({
           GoRoute(
             path: '/trips',
             builder: (context, state) => const TripListScreen(),
+          ),
+          // Listed before the `:tripId` route below so a literal "new"
+          // segment is matched here, not captured as a trip id.
+          GoRoute(
+            path: '/trips/new',
+            builder: (context, state) => const CreateTripScreen(),
           ),
           GoRoute(
             path: '/trips/:tripId',

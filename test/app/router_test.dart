@@ -55,6 +55,7 @@ void main() {
               ),
             ),
           ),
+          tripsLocalStoreProvider.overrideWithValue(InMemoryTripsLocalStore()),
         ],
         child: MaterialApp.router(routerConfig: router),
       ),
