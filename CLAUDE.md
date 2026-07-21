@@ -4,7 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-Native iOS/Android client for **Trek**, a collaborative trip-planning app, built with Flutter as an alternative to Trek's existing PWA. The project is still in early scaffolding — see [docs/ROADMAP.md](docs/ROADMAP.md) for the full feature plan (tracked as GitHub issues/milestones in this repo) and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for decisions made so far.
+Native iOS/Android client for **Trek**, a collaborative trip-planning app, built with Flutter as an alternative to Trek's existing PWA. The project is still in early scaffolding — see [docs/features.md](docs/features.md) for what's actually implemented, [docs/ROADMAP.md](docs/ROADMAP.md) for the full feature plan (tracked as GitHub issues/milestones in this repo), and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for decisions made so far.
+
+**Whenever a feature is added, removed, or its status changes, update [docs/features.md](docs/features.md) in the same PR.** This applies to every session and to the automated daily routine — it's the one place that should always reflect current reality, not a point-in-time snapshot.
 
 The app targets **iOS and Android only** — the `linux/`, `macos/`, `windows/`, and `web/` platform folders that `flutter create` normally generates were deliberately removed and should not be re-added.
 

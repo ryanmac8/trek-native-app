@@ -1,5 +1,6 @@
 # Documentation
 
+- [features.md](features.md) — what's actually implemented right now
 - [ROADMAP.md](ROADMAP.md) — feature plan, phased milestones, and links to the tracking issues
 - [ARCHITECTURE.md](ARCHITECTURE.md) — technical decisions made so far and open questions
 
