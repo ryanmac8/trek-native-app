@@ -8,6 +8,9 @@ import '../config/server_config.dart';
 import '../config/server_config_resolver.dart';
 import '../config/server_health_check.dart';
 import '../config/wifi_network_info.dart';
+import '../days/days_api.dart';
+import '../days/days_local_store.dart';
+import '../days/days_repository.dart';
 import '../network/api_client.dart';
 import '../trips/trips_api.dart';
 import '../trips/trips_local_store.dart';
@@ -91,6 +94,25 @@ final tripsRepositoryProvider = Provider<TripsRepository>((ref) {
   return TripsRepository(
     tripsApi: ref.watch(tripsApiProvider),
     localStore: ref.watch(tripsLocalStoreProvider),
+  );
+});
+
+final daysApiProvider = Provider<DaysApi>((ref) {
+  return DaysApi(apiClient: ref.watch(apiClientProvider));
+});
+
+/// Local (non-secure) cache of each trip's day list — see
+/// docs/offline-first.md. A minimal, scoped-to-days stand-in for the full
+/// local-persistence mechanism issue #21 will decide on for the whole data
+/// model.
+final daysLocalStoreProvider = Provider<DaysLocalStore>(
+  (ref) => PreferencesDaysLocalStore(),
+);
+
+final daysRepositoryProvider = Provider<DaysRepository>((ref) {
+  return DaysRepository(
+    daysApi: ref.watch(daysApiProvider),
+    localStore: ref.watch(daysLocalStoreProvider),
   );
 });
 

@@ -4,6 +4,8 @@ import 'package:trek/auth/biometric_auth_service.dart';
 import 'package:trek/auth/session_token.dart';
 import 'package:trek/auth/token_storage.dart';
 import 'package:trek/config/server_config.dart';
+import 'package:trek/days/day.dart';
+import 'package:trek/days/days_local_store.dart';
 import 'package:trek/trips/trip.dart';
 import 'package:trek/trips/trips_local_store.dart';
 
@@ -100,4 +102,24 @@ class InMemoryTripsLocalStore implements TripsLocalStore {
 
   @override
   Future<void> write(List<Trip> trips) async => _trips = List.of(trips);
+}
+
+/// In-memory [DaysLocalStore] fake — avoids the `shared_preferences`
+/// platform channel in widget/repository tests. Keyed per trip id, like the
+/// real store.
+class InMemoryDaysLocalStore implements DaysLocalStore {
+  InMemoryDaysLocalStore({Map<String, List<Day>> initial = const {}})
+    : _daysByTripId = {
+        for (final entry in initial.entries) entry.key: List.of(entry.value),
+      };
+
+  final Map<String, List<Day>> _daysByTripId;
+
+  @override
+  Future<List<Day>> read(String tripId) async =>
+      List.of(_daysByTripId[tripId] ?? const []);
+
+  @override
+  Future<void> write(String tripId, List<Day> days) async =>
+      _daysByTripId[tripId] = List.of(days);
 }
