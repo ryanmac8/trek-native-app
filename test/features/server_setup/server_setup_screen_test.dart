@@ -66,22 +66,15 @@ void main() {
     expect(find.text('Log in'), findsWidgets);
     final saved = await storage.read();
     expect(saved?.publicUrl, 'https://trek.example.com');
+    // Only the public URL is collected here — private endpoints are a
+    // power-user setting edited later from NetworkingSettingsScreen, not
+    // asked for during first-run onboarding.
+    expect(saved?.privateEndpoints, isEmpty);
   });
 
-  testWidgets('saves an optional private URL and trusted networks', (
-    tester,
-  ) async {
-    final storage = await pumpApp(tester);
-    final fields = find.byType(TextFormField);
+  testWidgets('has exactly one field (the public URL)', (tester) async {
+    await pumpApp(tester);
 
-    await tester.enterText(fields.at(0), 'https://trek.example.com');
-    await tester.enterText(fields.at(1), 'http://192.168.1.50:3000');
-    await tester.enterText(fields.at(2), 'Home Wifi, Office');
-    await tester.tap(find.widgetWithText(FilledButton, 'Continue'));
-    await tester.pumpAndSettle();
-
-    final saved = await storage.read();
-    expect(saved?.privateUrl, 'http://192.168.1.50:3000');
-    expect(saved?.trustedWifiNetworks, {'Home Wifi', 'Office'});
+    expect(find.byType(TextFormField), findsOneWidget);
   });
 }

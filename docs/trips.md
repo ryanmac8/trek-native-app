@@ -29,6 +29,12 @@ Per [offline-first.md](offline-first.md), `TripListScreen` and `CreateTripScreen
 
 `TripListScreen` renders a still-pending trip with a "Syncing…" subtitle and a static sync icon instead of the usual chevron; tapping it is a no-op, since there's no server id yet to navigate to.
 
+## Upcoming / Past tabs
+
+A bottom `NavigationBar` on `TripListScreen` splits the (already-loaded) trip list into "Upcoming Trips" and "Past Trips", always defaulting to Upcoming. A trip is "past" only when it has an `endDate` that's before today — a trip with no end date (undated, or a still-`isPending` trip that hasn't synced its dates yet) counts as upcoming, since the absence of an end date reads as "still being planned," not "already over." This is a client-side filter over the same in-memory list, not a separate fetch or cache partition.
+
+Within each tab, trips are sorted: Upcoming by soonest `startDate` first (an undated trip has nothing to compare, so it sorts after every dated one); Past by most recently ended first, oldest last.
+
 ## What's still open
 
 - Edit, archive/unarchive, delete, cover image upload, and the trip dashboard summary (remaining `TripsApi`/`TripsRepository` methods and screens for issue #3).

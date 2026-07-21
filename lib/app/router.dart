@@ -8,6 +8,8 @@ import '../features/auth/login_screen.dart';
 import '../features/auth/mfa_screen.dart';
 import '../features/auth/reconnect_screen.dart';
 import '../features/server_setup/server_setup_screen.dart';
+import '../features/settings/networking_settings_screen.dart';
+import '../features/settings/settings_screen.dart';
 import '../features/trips/create_trip_screen.dart';
 import '../features/trips/trip_dashboard_screen.dart';
 import '../features/trips/trip_list_screen.dart';
@@ -74,6 +76,16 @@ GoRouter buildAppRouter({
       GoRoute(
         path: '/reconnect',
         builder: (context, state) => const ReconnectScreen(),
+      ),
+      GoRoute(
+        path: '/settings',
+        builder: (context, state) => const SettingsScreen(),
+        routes: [
+          GoRoute(
+            path: 'networking',
+            builder: (context, state) => const NetworkingSettingsScreen(),
+          ),
+        ],
       ),
       ShellRoute(
         builder: (context, state, child) =>

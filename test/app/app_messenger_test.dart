@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:trek/app/app_messenger.dart';
 import 'package:trek/design/app_colors.dart';
@@ -39,6 +40,33 @@ void main() {
       expect(snackBar.backgroundColor, AppColors.success);
     },
   );
+
+  testWidgets('showError fires two haptic pulses, not one', (tester) async {
+    await pumpApp(tester);
+
+    final hapticCalls = <String>[];
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'HapticFeedback.vibrate') {
+          hapticCalls.add(call.method);
+        }
+        return null;
+      },
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      ),
+    );
+
+    AppMessenger.showError('Boom.');
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 150));
+
+    expect(hapticCalls.length, 2);
+  });
 
   testWidgets('a second message replaces the first rather than stacking', (
     tester,

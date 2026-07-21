@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:local_auth/local_auth.dart';
 
 /// Gates re-entry to an already-authenticated session behind Face ID/
@@ -28,8 +29,13 @@ class DeviceBiometricAuthService implements BiometricAuthService {
     try {
       final canCheck = await _localAuth.canCheckBiometrics;
       final deviceSupported = await _localAuth.isDeviceSupported();
+      debugPrint(
+        'BiometricAuthService.isAvailable: canCheckBiometrics=$canCheck, '
+        'isDeviceSupported=$deviceSupported',
+      );
       return canCheck && deviceSupported;
-    } catch (_) {
+    } catch (error) {
+      debugPrint('BiometricAuthService.isAvailable failed: $error');
       return false;
     }
   }
@@ -37,14 +43,17 @@ class DeviceBiometricAuthService implements BiometricAuthService {
   @override
   Future<bool> authenticate() async {
     try {
-      return await _localAuth.authenticate(
+      final result = await _localAuth.authenticate(
         localizedReason: 'Unlock Trek',
         biometricOnly: true,
         // Retry automatically on foregrounding instead of failing outright
         // if the OS interrupts the prompt by backgrounding the app.
         persistAcrossBackgrounding: true,
       );
-    } catch (_) {
+      debugPrint('BiometricAuthService.authenticate result: $result');
+      return result;
+    } catch (error) {
+      debugPrint('BiometricAuthService.authenticate failed: $error');
       return false;
     }
   }

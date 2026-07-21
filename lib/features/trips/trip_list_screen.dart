@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../app/app_messenger.dart';
 import '../../app/providers.dart';
 import '../../design/app_spacing.dart';
 import '../../design/widgets/app_list_row.dart';
@@ -27,6 +26,9 @@ class TripListScreen extends ConsumerStatefulWidget {
 class _TripListScreenState extends ConsumerState<TripListScreen> {
   List<Trip>? _trips;
   Object? _error;
+
+  /// 0 = Upcoming Trips, 1 = Past Trips — always defaults to Upcoming.
+  int _tabIndex = 0;
 
   @override
   void initState() {
@@ -79,12 +81,9 @@ class _TripListScreenState extends ConsumerState<TripListScreen> {
         title: const Text('Trips'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.logout),
-            tooltip: 'Log out',
-            onPressed: () async {
-              await ref.read(authServiceProvider).logout();
-              AppMessenger.showInfo('Logged out.');
-            },
+            icon: const Icon(Icons.settings_outlined),
+            tooltip: 'Settings',
+            onPressed: () => context.push('/settings'),
           ),
         ],
       ),
@@ -97,7 +96,45 @@ class _TripListScreenState extends ConsumerState<TripListScreen> {
         child: const Icon(Icons.add),
       ),
       body: _buildBody(context),
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: _tabIndex,
+        onDestinationSelected: (index) => setState(() => _tabIndex = index),
+        destinations: const [
+          NavigationDestination(
+            icon: Icon(Icons.flight_takeoff),
+            label: 'Upcoming Trips',
+          ),
+          NavigationDestination(icon: Icon(Icons.history), label: 'Past Trips'),
+        ],
+      ),
     );
+  }
+
+  /// A trip with no end date is still being planned, so it counts as
+  /// upcoming rather than past.
+  bool _isPast(Trip trip) {
+    final end = trip.endDate;
+    if (end == null) return false;
+    final now = DateTime.now();
+    return end.isBefore(DateTime(now.year, now.month, now.day));
+  }
+
+  /// Upcoming Trips: soonest start date first. Past Trips: most recently
+  /// ended first, oldest last. An upcoming trip with no start date yet
+  /// (undated, or still `isPending`) sorts after every dated trip — there's
+  /// no date to compare it against, so it can't be claimed as "sooner".
+  void _sortTrips(List<Trip> trips) {
+    trips.sort((a, b) {
+      if (_tabIndex == 1) {
+        return b.endDate!.compareTo(a.endDate!);
+      }
+      final aStart = a.startDate;
+      final bStart = b.startDate;
+      if (aStart == null && bStart == null) return 0;
+      if (aStart == null) return 1;
+      if (bStart == null) return -1;
+      return aStart.compareTo(bStart);
+    });
   }
 
   Widget _buildBody(BuildContext context) {
@@ -143,13 +180,25 @@ class _TripListScreenState extends ConsumerState<TripListScreen> {
       );
     }
 
+    final filtered = trips
+        .where((trip) => _isPast(trip) == (_tabIndex == 1))
+        .toList();
+    _sortTrips(filtered);
+
+    if (filtered.isEmpty) {
+      return EmptyState(
+        icon: _tabIndex == 0 ? Icons.card_travel : Icons.history,
+        message: _tabIndex == 0 ? 'No upcoming trips.' : 'No past trips.',
+      );
+    }
+
     return RefreshIndicator(
       onRefresh: _refresh,
       child: ListView.builder(
         padding: const EdgeInsets.all(AppSpacing.md),
-        itemCount: trips.length,
+        itemCount: filtered.length,
         itemBuilder: (context, index) {
-          final trip = trips[index];
+          final trip = filtered[index];
           return AppListRow(
             title: trip.title,
             subtitle: trip.isPending ? 'Syncing…' : _dateRangeLabel(trip),
@@ -162,10 +211,13 @@ class _TripListScreenState extends ConsumerState<TripListScreen> {
                   )
                 : const Icon(Icons.chevron_right),
             // A pending trip has no server id yet, so there's nowhere to
-            // navigate to until it syncs.
+            // navigate to until it syncs. Uses push (not go) so the trip
+            // detail screen lands on the navigation stack — go replaces
+            // the current location instead, which left no way back to the
+            // trip list (no AppBar back button, no swipe-back gesture).
             onTap: trip.isPending
                 ? null
-                : () => context.go('/trips/${trip.id}'),
+                : () => context.push('/trips/${trip.id}'),
           );
         },
       ),

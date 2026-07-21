@@ -6,6 +6,7 @@ import '../auth/biometric_auth_service.dart';
 import '../auth/token_storage.dart';
 import '../config/server_config.dart';
 import '../config/server_config_resolver.dart';
+import '../config/server_health_check.dart';
 import '../config/wifi_network_info.dart';
 import '../network/api_client.dart';
 import '../trips/trips_api.dart';
@@ -23,6 +24,12 @@ final serverConfigStorageProvider = Provider<ServerConfigStorage>(
 
 final wifiNetworkInfoProvider = Provider<WifiNetworkInfo>(
   (ref) => DeviceWifiNetworkInfo(),
+);
+
+/// Pings a candidate private endpoint's `/api/health` before it's saved —
+/// see `NetworkingSettingsScreen`'s add-endpoint dialog.
+final serverHealthCheckProvider = Provider<ServerHealthCheck>(
+  (ref) => ServerHealthCheck(),
 );
 
 final serverConfigResolverProvider = Provider<ServerConfigResolver>((ref) {
