@@ -9,6 +9,7 @@ import 'package:trek/app/providers.dart';
 import 'package:trek/auth/auth_service.dart';
 import 'package:trek/config/server_config.dart';
 import 'package:trek/network/api_client.dart';
+import 'package:trek/trips/trip.dart';
 
 import '../../test_helpers.dart';
 
@@ -24,6 +25,7 @@ Future<void> _pumpTripList(
   WidgetTester tester, {
   required AuthService authService,
   required http.Client tripsHttpClient,
+  InMemoryTripsLocalStore? localStore,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
@@ -44,6 +46,9 @@ Future<void> _pumpTripList(
           InMemoryServerConfigStorage(
             initial: const ServerConfig(publicUrl: 'https://trek.example.com'),
           ),
+        ),
+        tripsLocalStoreProvider.overrideWithValue(
+          localStore ?? InMemoryTripsLocalStore(),
         ),
       ],
       child: Consumer(
@@ -184,4 +189,123 @@ void main() {
     expect(find.text('Log in'), findsWidgets);
     expect(authService.isAuthenticated.value, isFalse);
   });
+
+  testWidgets(
+    'shows cached trips immediately, even though the network is unreachable',
+    (tester) async {
+      final localStore = InMemoryTripsLocalStore(
+        initial: [
+          Trip.fromJson({'id': 20, 'title': 'New Zealand', 'day_count': 16}),
+        ],
+      );
+
+      await _pumpTripList(
+        tester,
+        authService: _authenticatedAuthService(),
+        tripsHttpClient: MockClient((request) async {
+          throw http.ClientException('Connection refused');
+        }),
+        localStore: localStore,
+      );
+
+      // The cached trip is shown, not an offline empty state, since
+      // docs/offline-first.md treats the cache as the source of truth for
+      // what's already been seen.
+      expect(find.text('New Zealand'), findsOneWidget);
+      expect(find.textContaining("You're offline"), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'shows a pending (offline-created) trip with a syncing indicator and '
+    "doesn't navigate to it",
+    (tester) async {
+      final localStore = InMemoryTripsLocalStore(
+        initial: [const Trip(localId: 'local-1', title: 'Draft trip')],
+      );
+
+      await _pumpTripList(
+        tester,
+        authService: _authenticatedAuthService(),
+        tripsHttpClient: MockClient((request) async {
+          throw http.ClientException('Connection refused');
+        }),
+        localStore: localStore,
+      );
+
+      expect(find.text('Draft trip'), findsOneWidget);
+      expect(find.text('Syncing…'), findsOneWidget);
+
+      await tester.tap(find.text('Draft trip'));
+      await tester.pumpAndSettle();
+
+      // No server id to navigate to yet — still on the trip list.
+      expect(find.text('Trips'), findsOneWidget);
+    },
+  );
+
+  testWidgets('creating a trip while online adds the synced trip to the list', (
+    tester,
+  ) async {
+    await _pumpTripList(
+      tester,
+      authService: _authenticatedAuthService(),
+      tripsHttpClient: MockClient((request) async {
+        if (request.method == 'POST') {
+          expect(jsonDecode(request.body)['title'], 'Iceland');
+          return _json({
+            'trip': {'id': 7, 'title': 'Iceland'},
+          }, 201);
+        }
+        return _json({'trips': []});
+      }),
+    );
+
+    expect(find.text('No trips yet.'), findsOneWidget);
+
+    await tester.tap(find.byIcon(Icons.add));
+    await tester.pumpAndSettle();
+    expect(find.text('New trip'), findsOneWidget);
+
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Title'),
+      'Iceland',
+    );
+    await tester.tap(find.text('Create trip'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Trips'), findsOneWidget);
+    expect(find.text('Iceland'), findsOneWidget);
+    expect(find.text('Syncing…'), findsNothing);
+  });
+
+  testWidgets(
+    'creating a trip while offline shows it as a pending, syncing entry',
+    (tester) async {
+      await _pumpTripList(
+        tester,
+        authService: _authenticatedAuthService(),
+        tripsHttpClient: MockClient((request) async {
+          if (request.method == 'POST') {
+            throw http.ClientException('Connection refused');
+          }
+          return _json({'trips': []});
+        }),
+      );
+
+      await tester.tap(find.byIcon(Icons.add));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'Title'),
+        'Iceland',
+      );
+      await tester.tap(find.text('Create trip'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Trips'), findsOneWidget);
+      expect(find.text('Iceland'), findsOneWidget);
+      expect(find.text('Syncing…'), findsOneWidget);
+    },
+  );
 }

@@ -43,6 +43,7 @@ Future<void> _pumpAtReconnect(
             initial: const ServerConfig(publicUrl: 'https://trek.example.com'),
           ),
         ),
+        tripsLocalStoreProvider.overrideWithValue(InMemoryTripsLocalStore()),
       ],
       child: Consumer(
         builder: (context, ref, _) =>

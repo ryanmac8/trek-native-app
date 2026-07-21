@@ -9,6 +9,8 @@ import '../config/server_config_resolver.dart';
 import '../config/wifi_network_info.dart';
 import '../network/api_client.dart';
 import '../trips/trips_api.dart';
+import '../trips/trips_local_store.dart';
+import '../trips/trips_repository.dart';
 import 'app_lock_state.dart';
 import 'router.dart';
 
@@ -69,6 +71,20 @@ final biometricAuthServiceProvider = Provider<BiometricAuthService>(
 
 final tripsApiProvider = Provider<TripsApi>((ref) {
   return TripsApi(apiClient: ref.watch(apiClientProvider));
+});
+
+/// Local (non-secure) cache of the trip list — see docs/offline-first.md.
+/// A minimal, scoped-to-trips stand-in for the full local-persistence
+/// mechanism issue #21 will decide on for the whole data model.
+final tripsLocalStoreProvider = Provider<TripsLocalStore>(
+  (ref) => PreferencesTripsLocalStore(),
+);
+
+final tripsRepositoryProvider = Provider<TripsRepository>((ref) {
+  return TripsRepository(
+    tripsApi: ref.watch(tripsApiProvider),
+    localStore: ref.watch(tripsLocalStoreProvider),
+  );
 });
 
 /// Single long-lived instance for the app run — see [AppLockState].

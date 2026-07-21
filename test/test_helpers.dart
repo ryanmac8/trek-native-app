@@ -4,6 +4,8 @@ import 'package:trek/auth/biometric_auth_service.dart';
 import 'package:trek/auth/session_token.dart';
 import 'package:trek/auth/token_storage.dart';
 import 'package:trek/config/server_config.dart';
+import 'package:trek/trips/trip.dart';
+import 'package:trek/trips/trips_local_store.dart';
 
 /// Builds a syntactically-valid, unsigned JWT string for tests — Trek's
 /// backend is the only thing that verifies the signature; the client only
@@ -83,4 +85,19 @@ class InMemoryServerConfigStorage implements ServerConfigStorage {
 
   @override
   Future<void> clear() async => _config = null;
+}
+
+/// In-memory [TripsLocalStore] fake — avoids the `shared_preferences`
+/// platform channel in widget/repository tests.
+class InMemoryTripsLocalStore implements TripsLocalStore {
+  InMemoryTripsLocalStore({List<Trip> initial = const []})
+    : _trips = List.of(initial);
+
+  List<Trip> _trips;
+
+  @override
+  Future<List<Trip>> read() async => List.of(_trips);
+
+  @override
+  Future<void> write(List<Trip> trips) async => _trips = List.of(trips);
 }

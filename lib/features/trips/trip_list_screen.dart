@@ -11,14 +11,12 @@ import '../../design/widgets/skeleton_box.dart';
 import '../../network/api_exception.dart';
 import '../../trips/trip.dart';
 
-/// Landing screen once a session is active. Reads are network-only for now
-/// — no local cache yet (that's #21's job) — so per docs/offline-first.md
-/// this must degrade explicitly rather than hang or crash: a
-/// [NetworkException] shows an offline state with retry, not an infinite
-/// spinner or an uncaught error. A 401 doesn't show an error here at all —
-/// `ApiClient.onUnauthorized` already flagged `AuthService.needsReconnect`,
-/// which the surrounding `SyncStatusShell` banner surfaces; this screen
-/// just falls back to its empty state rather than duplicating that message.
+/// Landing screen once a session is active. Per docs/offline-first.md, the
+/// local cache ([TripsRepository.cachedTrips]) is the source of truth for
+/// what's shown — this screen paints from it immediately, then refreshes
+/// from the network in the background. A [NetworkException] only surfaces
+/// as an explicit offline state when there's nothing cached yet; if trips
+/// are already on screen, a failed background refresh just leaves them be.
 class TripListScreen extends ConsumerStatefulWidget {
   const TripListScreen({super.key});
 
@@ -27,7 +25,8 @@ class TripListScreen extends ConsumerStatefulWidget {
 }
 
 class _TripListScreenState extends ConsumerState<TripListScreen> {
-  late Future<List<Trip>> _tripsFuture;
+  List<Trip>? _trips;
+  Object? _error;
 
   @override
   void initState() {
@@ -35,21 +34,42 @@ class _TripListScreenState extends ConsumerState<TripListScreen> {
     _load();
   }
 
-  void _load() {
-    final future = ref.read(tripsApiProvider).listTrips();
-    // FutureBuilder attaches its own listener on the next build, which can
-    // be a frame after this future is created — if it rejects before then
-    // (routine with a fast/mocked backend), Dart's zone reports it as an
-    // unhandled error even though FutureBuilder goes on to render it fine.
-    // This sink doesn't affect FutureBuilder's own handling below — each
-    // listener on a Future is independent.
-    future.catchError((_) => const <Trip>[]);
-    _tripsFuture = future;
+  Future<void> _load() async {
+    final repository = ref.read(tripsRepositoryProvider);
+    final cached = await repository.cachedTrips();
+    if (!mounted) return;
+    setState(() {
+      _trips = cached;
+      _error = null;
+    });
+    await _refresh();
+  }
+
+  /// Re-reads the cache without hitting the network — used right after
+  /// [CreateTripScreen] returns, so a just-created (possibly still
+  /// [Trip.isPending]) trip appears instantly.
+  Future<void> _reloadFromCache() async {
+    final cached = await ref.read(tripsRepositoryProvider).cachedTrips();
+    if (!mounted) return;
+    setState(() => _trips = cached);
   }
 
   Future<void> _refresh() async {
-    setState(_load);
-    await _tripsFuture.catchError((_) => <Trip>[]);
+    final repository = ref.read(tripsRepositoryProvider);
+    try {
+      final refreshed = await repository.refreshTrips();
+      if (!mounted) return;
+      setState(() {
+        _trips = refreshed;
+        _error = null;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        // Only surface an error state when there's nothing cached to show.
+        if (_trips == null || _trips!.isEmpty) _error = e;
+      });
+    }
   }
 
   @override
@@ -68,76 +88,84 @@ class _TripListScreenState extends ConsumerState<TripListScreen> {
           ),
         ],
       ),
-      body: FutureBuilder<List<Trip>>(
-        future: _tripsFuture,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState != ConnectionState.done) {
-            return ListView(
-              padding: const EdgeInsets.all(AppSpacing.md),
-              children: const [
-                SkeletonListTile(),
-                SkeletonListTile(),
-                SkeletonListTile(),
-              ],
-            );
-          }
+      floatingActionButton: FloatingActionButton(
+        tooltip: 'New trip',
+        onPressed: () async {
+          await context.push<void>('/trips/new');
+          await _reloadFromCache();
+        },
+        child: const Icon(Icons.add),
+      ),
+      body: _buildBody(context),
+    );
+  }
 
-          if (snapshot.hasError) {
-            final error = snapshot.error;
-            if (error is NetworkException) {
-              return EmptyState(
-                icon: Icons.cloud_off,
-                message:
-                    "You're offline. Trips will load once you're "
-                    'back online.',
-                action: FilledButton(
-                  onPressed: () => setState(_load),
-                  child: const Text('Retry'),
-                ),
-              );
-            }
-            if (error is UnauthorizedException) {
-              // AuthService.needsReconnect is already set by ApiClient's
-              // onUnauthorized callback; SyncStatusShell surfaces that.
-              // Nothing trip-specific to say here.
-              return const EmptyState(
-                icon: Icons.card_travel,
-                message: 'No trips yet.',
-              );
-            }
-            return EmptyState(
-              icon: Icons.error_outline,
-              message: "Couldn't load trips.",
-              action: FilledButton(
-                onPressed: () => setState(_load),
-                child: const Text('Retry'),
-              ),
-            );
-          }
+  Widget _buildBody(BuildContext context) {
+    final trips = _trips;
 
-          final trips = snapshot.data ?? const [];
-          if (trips.isEmpty) {
-            return const EmptyState(
-              icon: Icons.card_travel,
-              message: 'No trips yet.',
-            );
-          }
+    if (trips == null) {
+      return ListView(
+        padding: const EdgeInsets.all(AppSpacing.md),
+        children: const [
+          SkeletonListTile(),
+          SkeletonListTile(),
+          SkeletonListTile(),
+        ],
+      );
+    }
 
-          return RefreshIndicator(
-            onRefresh: _refresh,
-            child: ListView.builder(
-              padding: const EdgeInsets.all(AppSpacing.md),
-              itemCount: trips.length,
-              itemBuilder: (context, index) {
-                final trip = trips[index];
-                return AppListRow(
-                  title: trip.title,
-                  subtitle: _dateRangeLabel(trip),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => context.go('/trips/${trip.id}'),
-                );
-              },
-            ),
+    if (trips.isEmpty) {
+      final error = _error;
+      if (error is NetworkException) {
+        return EmptyState(
+          icon: Icons.cloud_off,
+          message:
+              "You're offline. Trips will load once you're "
+              'back online.',
+          action: FilledButton(onPressed: _refresh, child: const Text('Retry')),
+        );
+      }
+      if (error != null && error is! UnauthorizedException) {
+        // AuthService.needsReconnect (for a 401) is already flagged by
+        // ApiClient's onUnauthorized callback and surfaced by
+        // SyncStatusShell — nothing trip-specific to say for that case, so
+        // it falls through to the plain empty state below like a genuine
+        // "no trips yet".
+        return EmptyState(
+          icon: Icons.error_outline,
+          message: "Couldn't load trips.",
+          action: FilledButton(onPressed: _refresh, child: const Text('Retry')),
+        );
+      }
+      return const EmptyState(
+        icon: Icons.card_travel,
+        message: 'No trips yet.',
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: _refresh,
+      child: ListView.builder(
+        padding: const EdgeInsets.all(AppSpacing.md),
+        itemCount: trips.length,
+        itemBuilder: (context, index) {
+          final trip = trips[index];
+          return AppListRow(
+            title: trip.title,
+            subtitle: trip.isPending ? 'Syncing…' : _dateRangeLabel(trip),
+            // A static icon, not a spinner — this reflects "queued to sync
+            // once online", not active in-progress work.
+            trailing: trip.isPending
+                ? Icon(
+                    Icons.sync,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  )
+                : const Icon(Icons.chevron_right),
+            // A pending trip has no server id yet, so there's nowhere to
+            // navigate to until it syncs.
+            onTap: trip.isPending
+                ? null
+                : () => context.go('/trips/${trip.id}'),
           );
         },
       ),
