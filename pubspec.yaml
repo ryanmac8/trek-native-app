@@ -47,6 +47,8 @@ dependencies:
 
   # Current Wi-Fi SSID, used to pick the private vs. public server URL.
   network_info_plus: ^6.1.4
+  flutter_riverpod: ^3.3.2
+  go_router: ^17.3.0
 
 dev_dependencies:
   flutter_test:
