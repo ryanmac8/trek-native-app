@@ -55,6 +55,11 @@ Future<void> _pumpTripList(
         // cache on initState — override so that doesn't hit the real
         // shared_preferences platform channel (unmocked here) and hang.
         daysLocalStoreProvider.overrideWithValue(InMemoryDaysLocalStore()),
+        // Same reason — the dashboard's nav bar reads its customization
+        // layout on build.
+        tripDashboardNavLayoutStoreProvider.overrideWithValue(
+          InMemoryTripDashboardNavLayoutStore(),
+        ),
       ],
       child: Consumer(
         builder: (context, ref, _) =>

@@ -11,6 +11,7 @@ import '../config/wifi_network_info.dart';
 import '../days/days_api.dart';
 import '../days/days_local_store.dart';
 import '../days/days_repository.dart';
+import '../features/trips/trip_dashboard_nav_layout_store.dart';
 import '../network/api_client.dart';
 import '../trips/trips_api.dart';
 import '../trips/trips_local_store.dart';
@@ -115,6 +116,13 @@ final daysRepositoryProvider = Provider<DaysRepository>((ref) {
     localStore: ref.watch(daysLocalStoreProvider),
   );
 });
+
+/// Device-local UI preference (not trip data) for the trip dashboard's
+/// customizable bottom nav — see [TripDashboardNavLayoutStore].
+final tripDashboardNavLayoutStoreProvider =
+    Provider<TripDashboardNavLayoutStore>(
+      (ref) => PreferencesTripDashboardNavLayoutStore(),
+    );
 
 /// Single long-lived instance for the app run — see [AppLockState].
 final appLockStateProvider = Provider<AppLockState>((ref) => AppLockState());
