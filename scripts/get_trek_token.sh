@@ -65,8 +65,8 @@ extract_mfa_token() {
   echo "$1" | grep -oE '"mfa_token"[[:space:]]*:[[:space:]]*"[^"]*"' | sed -E 's/.*"([^"]*)"$/\1/'
 }
 
-token=$(extract_token "$login_response")
-mfa_token=$(extract_mfa_token "$login_response")
+token=$(extract_token "$login_response" || true)
+mfa_token=$(extract_mfa_token "$login_response" || true)
 echo "Extracted token: ${token:-<empty>}, mfa_token: ${mfa_token:-<empty>}" >&2
 
 if [[ -z "$token" && -n "$mfa_token" ]]; then
@@ -75,7 +75,7 @@ if [[ -z "$token" && -n "$mfa_token" ]]; then
     -H "Content-Type: application/json" \
     -d "$(printf '{"mfa_token":"%s","code":"%s"}' "$mfa_token" "$mfa_code")")
   echo "MFA verify response: ${verify_response}" >&2
-  token=$(extract_token "$verify_response")
+  token=$(extract_token "$verify_response" || true)
 fi
 
 if [[ -z "$token" ]]; then

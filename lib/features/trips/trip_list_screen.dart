@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../app/app_messenger.dart';
 import '../../app/providers.dart';
 import '../../design/widgets/empty_state.dart';
 
@@ -19,7 +20,10 @@ class TripListScreen extends ConsumerWidget {
           IconButton(
             icon: const Icon(Icons.logout),
             tooltip: 'Log out',
-            onPressed: () => ref.read(authServiceProvider).logout(),
+            onPressed: () async {
+              await ref.read(authServiceProvider).logout();
+              AppMessenger.showInfo('Logged out.');
+            },
           ),
         ],
       ),
