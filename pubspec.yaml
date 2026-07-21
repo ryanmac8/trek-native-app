@@ -35,9 +35,25 @@ dependencies:
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
 
+  # HTTP client used by the API client wrapping Trek's backend.
+  http: ^1.2.2
+
+  # Secure, platform-native storage (Keychain / Android Keystore) for auth tokens.
+  flutter_secure_storage: ^9.2.2
+
+  # Plain (non-secure) local storage for the self-hosted server URL — not a
+  # secret, so this is deliberately separate from flutter_secure_storage.
+  shared_preferences: ^2.3.3
+
+  # Current Wi-Fi SSID, used to pick the private vs. public server URL.
+  network_info_plus: ^6.1.4
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
+
+  # In-memory shared_preferences fake used by server_config_test.dart.
+  shared_preferences_platform_interface: ^2.4.1
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is

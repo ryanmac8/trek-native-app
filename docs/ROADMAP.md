@@ -4,6 +4,8 @@ Trek native is being built against Trek's existing feature set (trips, itinerari
 
 Each issue below is an epic with its own checklist of concrete sub-features — open the issue for details.
 
+> **Before picking up any item below:** read [offline-first.md](offline-first.md). Offline-first is a cross-cutting principle, not just issue #21 — every feature that reads/writes trip data should be designed assuming the network may be unavailable, from the first PR that touches it.
+
 ## Phase 1 — MVP
 
 Core trip planning parity, plus the networking/auth/architecture foundation everything else builds on.

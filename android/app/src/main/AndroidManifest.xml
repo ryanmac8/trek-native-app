@@ -1,4 +1,12 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Needed to read the current Wi-Fi SSID (network_info_plus), so the
+         app can pick the private vs. public server URL. ACCESS_FINE_LOCATION
+         is required by Android to return a real SSID rather than a redacted
+         placeholder; the runtime permission prompt itself is a UI concern
+         (not yet built, see docs/networking-auth.md). -->
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
     <application
         android:label="trek"
         android:name="${applicationName}"
