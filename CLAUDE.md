@@ -8,9 +8,9 @@ Native iOS/Android client for **Trek**, a collaborative trip-planning app, built
 
 The app targets **iOS and Android only** — the `linux/`, `macos/`, `windows/`, and `web/` platform folders that `flutter create` normally generates were deliberately removed and should not be re-added.
 
-## Offline-first is a cross-cutting principle, not a Phase 3 feature
+## Offline-first
 
-**Assume the network is unavailable, slow, or flaky at any point.** This is the main reason this app exists instead of just using the PWA, so it must shape every data-layer decision from day one — not just the dedicated sync work tracked in [#21](https://github.com/ryanmac8/trek-native-app/issues/21). Read [docs/offline-first.md](docs/offline-first.md) before implementing any feature that reads or writes trip data: local storage is the source of truth for the UI, writes are local-first and sync in the background, and reads/writes must degrade gracefully rather than blocking on or failing from a network call. When picking the next roadmap item to build (including for the automated daily routine), prefer items that can be built offline-first now over ones that would need re-architecting once #21 lands.
+Assume the network may be unavailable at any point. This applies to every feature that reads or writes trip data, not just the sync work tracked in [#21](https://github.com/ryanmac8/trek-native-app/issues/21). Read [docs/offline-first.md](docs/offline-first.md) before implementing any such feature.
 
 ## Commands
 
@@ -27,7 +27,7 @@ flutter build apk            # Android build
 
 ## Architecture
 
-The codebase currently consists of a single entry point, [lib/main.dart](lib/main.dart) — there is no state management, networking, or navigation layer yet. Those are tracked as foundational epics (issues [#1](https://github.com/ryanmac8/trek-native-app/issues/1) and [#2](https://github.com/ryanmac8/trek-native-app/issues/2)) and should be established before feature work builds on top of them, since every other epic depends on them.
+`lib/main.dart` is still a single placeholder screen — there is no state management or navigation layer yet ([#2](https://github.com/ryanmac8/trek-native-app/issues/2)). The networking/auth foundation ([#1](https://github.com/ryanmac8/trek-native-app/issues/1)) exists under `lib/config/`, `lib/network/`, and `lib/auth/`; see [docs/networking-auth.md](docs/networking-auth.md). Both are foundational epics that other feature work depends on.
 
 Trek's backend data model (Trip → Day → Assignment → Place, plus Accommodation, Reservation, Budget, Packing, Todo, Tags, Collaboration, Atlas, Vacay, Journey) is documented per-feature in the GitHub issues — see [docs/ROADMAP.md](docs/ROADMAP.md) for the summarized version.
 
