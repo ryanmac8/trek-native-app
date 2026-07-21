@@ -35,6 +35,12 @@ dependencies:
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
 
+  # HTTP client used by the API client wrapping Trek's backend.
+  http: ^1.2.2
+
+  # Secure, platform-native storage (Keychain / Android Keystore) for auth tokens.
+  flutter_secure_storage: ^9.2.2
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
