@@ -51,6 +51,10 @@ Future<void> _pumpTripList(
         tripsLocalStoreProvider.overrideWithValue(
           localStore ?? InMemoryTripsLocalStore(),
         ),
+        // The dashboard the trip-tap test navigates to reads the Days tab's
+        // cache on initState — override so that doesn't hit the real
+        // shared_preferences platform channel (unmocked here) and hang.
+        daysLocalStoreProvider.overrideWithValue(InMemoryDaysLocalStore()),
       ],
       child: Consumer(
         builder: (context, ref, _) =>
