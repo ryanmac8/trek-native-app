@@ -8,6 +8,10 @@ Native iOS/Android client for **Trek**, a collaborative trip-planning app, built
 
 The app targets **iOS and Android only** — the `linux/`, `macos/`, `windows/`, and `web/` platform folders that `flutter create` normally generates were deliberately removed and should not be re-added.
 
+## Offline-first is a cross-cutting principle, not a Phase 3 feature
+
+**Assume the network is unavailable, slow, or flaky at any point.** This is the main reason this app exists instead of just using the PWA, so it must shape every data-layer decision from day one — not just the dedicated sync work tracked in [#21](https://github.com/ryanmac8/trek-native-app/issues/21). Read [docs/offline-first.md](docs/offline-first.md) before implementing any feature that reads or writes trip data: local storage is the source of truth for the UI, writes are local-first and sync in the background, and reads/writes must degrade gracefully rather than blocking on or failing from a network call. When picking the next roadmap item to build (including for the automated daily routine), prefer items that can be built offline-first now over ones that would need re-architecting once #21 lands.
+
 ## Commands
 
 ```bash
