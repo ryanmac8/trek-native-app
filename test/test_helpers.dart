@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:trek/auth/biometric_auth_service.dart';
 import 'package:trek/auth/session_token.dart';
 import 'package:trek/auth/token_storage.dart';
 import 'package:trek/config/server_config.dart';
@@ -45,6 +46,26 @@ class ThrowingTokenStorage implements TokenStorage {
 
   @override
   Future<void> clear() async {}
+}
+
+/// [BiometricAuthService] fake — avoids the `local_auth` platform channel,
+/// which isn't mocked in widget tests and hangs `pumpAndSettle` if hit.
+/// Defaults to unavailable (skips the lock screen), matching most tests'
+/// needs; construct with `available: true` for lock-screen-specific tests.
+class FakeBiometricAuthService implements BiometricAuthService {
+  FakeBiometricAuthService({
+    this.available = false,
+    this.authenticateResult = true,
+  });
+
+  final bool available;
+  final bool authenticateResult;
+
+  @override
+  Future<bool> isAvailable() async => available;
+
+  @override
+  Future<bool> authenticate() async => authenticateResult;
 }
 
 /// In-memory [ServerConfigStorage] fake — avoids the `shared_preferences`

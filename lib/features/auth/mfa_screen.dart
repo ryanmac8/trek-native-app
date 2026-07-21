@@ -47,7 +47,10 @@ class _MfaScreenState extends ConsumerState<MfaScreen> {
             code: _codeController.text.trim(),
           );
       // The router redirects to /trips automatically once isAuthenticated
-      // flips to true.
+      // flips to true. Mark unlocked too — the MFA code already proved
+      // identity, an immediate biometric prompt right after would be
+      // redundant.
+      ref.read(appLockStateProvider).isUnlocked.value = true;
     } on ApiException catch (e) {
       setState(() => _errorMessage = e.message);
     } finally {

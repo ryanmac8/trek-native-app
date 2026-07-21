@@ -63,6 +63,12 @@ void main() {
               ),
             ),
           ),
+          apiClientProvider.overrideWithValue(
+            ApiClient(
+              baseUrl: 'https://trek.example.com',
+              httpClient: MockClient((request) async => _json({'trips': []})),
+            ),
+          ),
         ],
         child: Consumer(
           builder: (context, ref, _) =>

@@ -48,6 +48,17 @@ class AuthService {
   /// the login screen).
   final ValueNotifier<bool> isAuthenticated = ValueNotifier(false);
 
+  /// Set when an authenticated request comes back 401 (see
+  /// [handleUnauthorized]) — the server has rejected the stored token, but
+  /// unlike [isAuthenticated] this does NOT sign the user out or block the
+  /// app. Per this app's offline-first principle, a broken connection to
+  /// Trek (whether from being offline or the token going stale) should
+  /// degrade to "can't sync right now," not "you're logged out" — the UI
+  /// surfaces this as a dismissible/persistent notice with a way to
+  /// reconnect (see docs/app-shell.md), not a forced redirect. Cleared by a
+  /// successful [login]/[verifyMfaLogin]/[logout].
+  final ValueNotifier<bool> needsReconnect = ValueNotifier(false);
+
   /// Restores session state from storage; call once at app startup.
   Future<void> restoreSession() async {
     final token = await currentAccessToken;
@@ -77,6 +88,7 @@ class AuthService {
     final token = SessionToken.fromJwt(response['token'] as String);
     await _tokenStorage.write(token);
     isAuthenticated.value = true;
+    needsReconnect.value = false;
     return LoggedIn(token);
   }
 
@@ -102,6 +114,7 @@ class AuthService {
     final token = SessionToken.fromJwt(response['token'] as String);
     await _tokenStorage.write(token);
     isAuthenticated.value = true;
+    needsReconnect.value = false;
     return token;
   }
 
@@ -114,6 +127,7 @@ class AuthService {
     } finally {
       await _tokenStorage.clear();
       isAuthenticated.value = false;
+      needsReconnect.value = false;
     }
   }
 
@@ -134,12 +148,16 @@ class AuthService {
 
   /// Wire this into an authenticated [ApiClient]'s `onUnauthorized` callback.
   /// A 401 from Trek (e.g. the token's `password_version` was invalidated by
-  /// a password change on another device) means the session is dead — there
-  /// is nothing to refresh, so this always clears local state and returns
-  /// `false` (never retry).
+  /// a password change on another device, or the token was revoked) means
+  /// *this request* can't be retried — there's nothing to refresh — so this
+  /// always returns `false`. It deliberately does NOT clear the stored
+  /// token or flip [isAuthenticated]: per this app's offline-first
+  /// principle, a rejected token shouldn't force the user out any more than
+  /// being offline should (see [needsReconnect]'s doc comment). The user
+  /// stays in the app and reconnects explicitly, which re-runs [login] and
+  /// clears this flag.
   Future<bool> handleUnauthorized() async {
-    await _tokenStorage.clear();
-    isAuthenticated.value = false;
+    needsReconnect.value = true;
     return false;
   }
 }

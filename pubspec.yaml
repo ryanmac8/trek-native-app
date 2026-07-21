@@ -54,6 +54,9 @@ dependencies:
   # Navigation (lib/app/router.dart).
   go_router: ^17.3.0
 
+  # Face ID / Touch ID / Android biometric prompt (lib/auth/biometric_auth_service.dart).
+  local_auth: ^3.0.2
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

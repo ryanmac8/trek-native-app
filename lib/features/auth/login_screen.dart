@@ -10,7 +10,10 @@ import '../../network/api_exception.dart';
 /// Trek's login form. On success, [AuthService.isAuthenticated] flips to
 /// `true` and the router (which watches it as `refreshListenable`)
 /// redirects to `/trips` on its own — this screen never navigates there
-/// itself. MFA-enabled accounts are routed to [MfaScreen] instead.
+/// itself. MFA-enabled accounts are routed to [MfaScreen] instead. Also
+/// marks the app unlocked (see `AppLockState`) — typing a password already
+/// proves identity, so an immediate biometric prompt right after would be
+/// redundant.
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
 
@@ -53,8 +56,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
       if (result is MfaRequired && mounted) {
         context.push('/login/mfa', extra: result.mfaToken);
+      } else {
+        // LoggedIn: nothing to navigate — the router redirects
+        // automatically. Just mark the app unlocked for this run.
+        ref.read(appLockStateProvider).isUnlocked.value = true;
       }
-      // LoggedIn: nothing to do — the router redirects automatically.
     } on ApiException catch (e) {
       setState(() => _errorMessage = e.message);
     } finally {

@@ -240,10 +240,13 @@ void main() {
   });
 
   group('AuthService.handleUnauthorized', () {
-    test('clears the session and never asks the caller to retry', () async {
-      await storage.write(
-        SessionToken(token: _futureJwt(), expiresAt: DateTime.utc(2030)),
+    test('flags needsReconnect without signing the user out or clearing the '
+        'stored token, and never asks the caller to retry', () async {
+      final token = SessionToken(
+        token: _futureJwt(),
+        expiresAt: DateTime.utc(2030),
       );
+      await storage.write(token);
       final auth = AuthService(
         apiClient: ApiClient(baseUrl: 'https://trek.example.com'),
         tokenStorage: storage,
@@ -253,8 +256,32 @@ void main() {
       final shouldRetry = await auth.handleUnauthorized();
 
       expect(shouldRetry, isFalse);
-      expect(auth.isAuthenticated.value, isFalse);
-      expect(await storage.read(), isNull);
+      // Offline-first: a rejected token degrades to "can't sync," not
+      // "logged out" — the app must stay usable.
+      expect(auth.isAuthenticated.value, isTrue);
+      expect(auth.needsReconnect.value, isTrue);
+      expect((await storage.read())?.token, token.token);
+    });
+  });
+
+  group('AuthService.needsReconnect', () {
+    test('a fresh login clears a previously-set needsReconnect flag', () async {
+      final jwt = _futureJwt();
+      final client = ApiClient(
+        baseUrl: 'https://trek.example.com',
+        httpClient: MockClient(
+          (request) async => _json({
+            'token': jwt,
+            'user': {'id': 1},
+          }),
+        ),
+      );
+      final auth = AuthService(apiClient: client, tokenStorage: storage);
+      auth.needsReconnect.value = true;
+
+      await auth.login(email: 'a@trek.app', password: 'hunter2');
+
+      expect(auth.needsReconnect.value, isFalse);
     });
   });
 }

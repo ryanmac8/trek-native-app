@@ -39,7 +39,18 @@ class _TrekAppState extends ConsumerState<TrekApp> {
   }
 
   Future<void> _initialize() async {
+    // BiometricAuthService.isAvailable() never throws (see its doc comment),
+    // so this can't affect the error handling below — safe to resolve
+    // before the restoreSession/min-duration pair.
+    final biometricsAvailable = await ref
+        .read(biometricAuthServiceProvider)
+        .isAvailable();
+    ref.read(appLockStateProvider).biometricsAvailable = biometricsAvailable;
+
     try {
+      // Future.wait (default eagerError: false) waits for BOTH before
+      // completing, so the minimum splash duration is honored even if
+      // restoreSession throws.
       await Future.wait([
         ref.read(authServiceProvider).restoreSession(),
         Future.delayed(_minSplashDuration),

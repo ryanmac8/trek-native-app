@@ -1,6 +1,6 @@
 # Networking & Auth
 
-First slice of [issue #1](https://github.com/ryanmac8/trek-native-app/issues/1): the HTTP client, error handling, server config, token storage, and the login/MFA/logout flow. No login/server-setup UI yet (depends on [issue #2](https://github.com/ryanmac8/trek-native-app/issues/2)'s navigation), and no request/response models for the rest of the data model yet.
+Covers [issue #1](https://github.com/ryanmac8/trek-native-app/issues/1): the HTTP client, error handling, server config, token storage, the login/MFA/logout flow, and the authenticated `ApiClient` used for the rest of the API. No request/response models for the rest of the data model yet beyond `TripsApi`'s minimal read (see [app-shell.md](app-shell.md)).
 
 ## Pieces
 
@@ -13,7 +13,8 @@ First slice of [issue #1](https://github.com/ryanmac8/trek-native-app/issues/1):
 | [lib/network/api_client.dart](../lib/network/api_client.dart) | Wraps `package:http`. Resolves paths against a base URL (fixed via `baseUrl`, or resolved per-request via `getBaseUrl`), JSON-encodes/decodes bodies, attaches a bearer token via an injected `getAccessToken` callback, and maps non-2xx responses to the exceptions above. |
 | [lib/auth/session_token.dart](../lib/auth/session_token.dart) | `SessionToken` — Trek's single session JWT, decoding its `exp` claim client-side. |
 | [lib/auth/token_storage.dart](../lib/auth/token_storage.dart) | `TokenStorage` interface + `SecureTokenStorage`, which persists the token in the iOS Keychain / Android Keystore via `flutter_secure_storage`. |
-| [lib/auth/auth_service.dart](../lib/auth/auth_service.dart) | `login`, `verifyMfaLogin`, `logout`, `currentAccessToken` (expiry-aware, local-only check), `handleUnauthorized`, and an `isAuthenticated` listenable. |
+| [lib/auth/auth_service.dart](../lib/auth/auth_service.dart) | `login`, `verifyMfaLogin`, `logout`, `currentAccessToken` (expiry-aware, local-only check), `handleUnauthorized`, and the `isAuthenticated`/`needsReconnect` listenables. |
+| [lib/features/auth/reconnect_screen.dart](../lib/features/auth/reconnect_screen.dart) | `ReconnectScreen` — the `/reconnect` route, re-running `login`/`verifyMfaLogin` in place when `needsReconnect` is set. |
 
 ## Server configuration
 
@@ -37,4 +38,16 @@ Error responses are `{ error: string, code?: string }`. Validation failures (400
 
 ## Composition
 
-`ApiClient` and `AuthService` have no circular dependency: `AuthService` holds an unauthenticated `ApiClient` for the auth endpoints. A separate, authenticated `ApiClient` for the rest of the app uses `authService.currentAccessToken` as `getAccessToken`, `authService.handleUnauthorized` as `onUnauthorized`, and `serverConfigResolver.resolveBaseUrl` as `getBaseUrl` — so a 401 clears the session and `isAuthenticated` reflects it, and every request targets whichever of the public/private server URLs matches the current Wi-Fi network.
+`ApiClient` and `AuthService` have no circular dependency: `AuthService` holds an unauthenticated `ApiClient` for the auth endpoints (`authApiClientProvider`). A separate, authenticated `ApiClient` (`apiClientProvider`) for the rest of the app uses `authService.currentAccessToken` as `getAccessToken`, `authService.handleUnauthorized` as `onUnauthorized`, and `serverConfigResolver.resolveBaseUrl` as `getBaseUrl` — so every request targets whichever of the public/private server URLs matches the current Wi-Fi network, with a bearer token attached automatically.
+
+## Authenticated requests & sync resilience
+
+A 401 from an authenticated request does **not** clear the session or sign the user out. This app's offline-first principle (see [offline-first.md](offline-first.md)) treats a rejected token the same way it treats being offline: a "can't sync right now" condition, not a reason to lock someone out of an app they were just using. Concretely:
+
+- `AuthService.needsReconnect` (a `ValueNotifier<bool>`, separate from `isAuthenticated`) is set by `handleUnauthorized()` — the stored token and `isAuthenticated` are left untouched.
+- [`SyncStatusShell`](../lib/app/sync_status_shell.dart) wraps the authenticated routes (`/trips` and `/trips/:tripId`, via a `ShellRoute`) with a persistent, non-blocking banner shown while `needsReconnect` is set. It never intercepts navigation or hides its child.
+- The banner's "Reconnect" action pushes `/reconnect` ([`ReconnectScreen`](../lib/features/auth/reconnect_screen.dart)), which re-runs `login`/`verifyMfaLogin` in place. Success clears `needsReconnect` (and `login`/`verifyMfaLogin` clear it on *any* successful call, not just from this screen, in case something else re-authenticates first).
+- `ReconnectScreen` handles its MFA step **inline** on the same screen rather than pushing `/login/mfa` — that route is gated behind "not authenticated," and a user reconnecting is, by design, still authenticated the whole time. Pushing it would just bounce straight back via the router's redirect.
+- `TripListScreen` reflects this same principle for its own errors: a `NetworkException` shows an explicit offline state with retry (see [offline-first.md](offline-first.md)); a 401 falls back to its plain empty state rather than showing a second, duplicate error — the banner above it already said what's wrong.
+
+`needsReconnect` is cleared by `logout()` too, since it's meaningless once there's no session at all.

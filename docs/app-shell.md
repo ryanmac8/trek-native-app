@@ -1,6 +1,6 @@
 # App Shell
 
-First slice of [issue #2](https://github.com/ryanmac8/trek-native-app/issues/2): state management, navigation, and the design system, plus wiring [issue #1](https://github.com/ryanmac8/trek-native-app/issues/1)'s `AuthService`/`ServerConfigStorage` into real screens. No trip data yet — that's [#3](https://github.com/ryanmac8/trek-native-app/issues/3) onward.
+Covers [issue #2](https://github.com/ryanmac8/trek-native-app/issues/2): state management, navigation, and the design system, plus wiring [issue #1](https://github.com/ryanmac8/trek-native-app/issues/1)'s `AuthService`/`ServerConfigStorage` into real screens. `TripListScreen` is the first (read-only) slice of trip data — full trip detail is still [#3](https://github.com/ryanmac8/trek-native-app/issues/3) onward.
 
 ## State management
 
@@ -14,9 +14,11 @@ First slice of [issue #2](https://github.com/ryanmac8/trek-native-app/issues/2):
 | `authApiClientProvider` | `ApiClient` | unauthenticated client for `/api/auth/*`, using `serverConfigResolverProvider` as `getBaseUrl` |
 | `tokenStorageProvider` | `TokenStorage` | `SecureTokenStorage` |
 | `authServiceProvider` | `AuthService` | wraps `authApiClientProvider` + `tokenStorageProvider` |
+| `apiClientProvider` | `ApiClient` | authenticated client for the rest of the API — see [networking-auth.md](networking-auth.md#authenticated-requests--sync-resilience) |
+| `biometricAuthServiceProvider` | `BiometricAuthService` | see [biometric-lock.md](biometric-lock.md) |
+| `appLockStateProvider` | `AppLockState` | ditto |
+| `tripsApiProvider` | `TripsApi` | read-only `GET /api/trips` wrapper — see "Screens" below |
 | `appRouterProvider` | `GoRouter` | see below |
-
-An authenticated `ApiClient` (bearer token + 401 handling wired to `AuthService.handleUnauthorized`) isn't provided yet — that belongs to whichever feature first needs to call an authenticated endpoint.
 
 ## Navigation
 
@@ -27,15 +29,18 @@ An authenticated `ApiClient` (bearer token + 401 handling wired to `AuthService.
 | `/server-setup` | `ServerSetupScreen` |
 | `/login` | `LoginScreen` |
 | `/login/mfa` | `MfaScreen` (reached with the `mfaToken` as `extra`) |
-| `/trips` | `TripListScreen` |
+| `/lock` | `BiometricLockScreen` — see [biometric-lock.md](biometric-lock.md) |
+| `/reconnect` | `ReconnectScreen` — see [networking-auth.md](networking-auth.md#authenticated-requests--sync-resilience) |
+| `/trips` | `TripListScreen` (wrapped in a `ShellRoute` with `SyncStatusShell`, along with `/trips/:tripId`) |
 | `/trips/:tripId` | `TripDashboardScreen` |
 
-`redirect` gates navigation on two local (never network) reads, evaluated on every navigation:
+`redirect` gates navigation on local (never network) reads, evaluated on every navigation, in order:
 
 1. `ServerConfigStorage.read()` — no server configured → `/server-setup`.
 2. `AuthService.isAuthenticated.value` — no session → `/login`.
+3. `AppLockState.biometricsAvailable && !AppLockState.isUnlocked.value` — biometrics available but not unlocked this run → `/lock`.
 
-`AuthService.isAuthenticated` (a `ValueNotifier<bool>`, so it doubles as a `Listenable`) is passed as `refreshListenable`, so the router re-evaluates on its own the moment a login/logout/token-expiry flips it — screens that change auth state never call `context.go()` themselves.
+`refreshListenable` is `Listenable.merge([authService.isAuthenticated, appLockState.isUnlocked])`, so the router re-evaluates on its own the moment either changes (login/logout/token-expiry/unlock) — screens that change this state never call `context.go()` themselves. `/reconnect` is a normal freely-visitable destination once authenticated+unlocked (reached by tapping the sync-status banner), not another gate — see [networking-auth.md](networking-auth.md#authenticated-requests--sync-resilience) for why it has to handle its own MFA step inline instead of pushing `/login/mfa`.
 
 `TrekApp` ([lib/app/trek_app.dart](../lib/app/trek_app.dart)) calls `AuthService.restoreSession()` once at startup, before building the router, so the first redirect decision reflects a session already on disk rather than the `isAuthenticated` default of `false`.
 
@@ -83,14 +88,15 @@ A native launch image can only ever be static (an OS-level constraint on both iO
 ## Screens
 
 - **`ServerSetupScreen`** — collects the public server URL (required) and an optional private/LAN URL + trusted Wi-Fi network names, via `ServerConfig.validateUrl`. Writes to `ServerConfigStorage` and lets the redirect carry the user to `/login`.
-- **`LoginScreen`** / **`MfaScreen`** — call `AuthService.login` / `verifyMfaLogin` directly; an `ApiException` is caught and shown inline (including `NetworkException` when offline — see [offline-first.md](offline-first.md)). Neither screen navigates on success; the router's `refreshListenable` does that.
-- **`TripListScreen`** — empty state (no trip data model yet) plus a working logout action.
+- **`LoginScreen`** / **`MfaScreen`** — call `AuthService.login` / `verifyMfaLogin` directly; an `ApiException` is caught and shown inline (including `NetworkException` when offline — see [offline-first.md](offline-first.md)). Neither screen navigates on success; the router's `refreshListenable` does that. Both also mark the app unlocked (`AppLockState.isUnlocked`) on success, since typing a password/MFA code already proves identity — see [biometric-lock.md](biometric-lock.md).
+- **`BiometricLockScreen`** / **`ReconnectScreen`** — see [biometric-lock.md](biometric-lock.md) and [networking-auth.md](networking-auth.md#authenticated-requests--sync-resilience) respectively.
+- **`TripListScreen`** — the first real (read-only) slice of [#3](https://github.com/ryanmac8/trek-native-app/issues/3): fetches `GET /api/trips` via `tripsApiProvider` and renders each as an `AppListRow`. No local persistence yet (that's [#21](https://github.com/ryanmac8/trek-native-app/issues/21)) — reads are network-only, but degrade explicitly per [offline-first.md](offline-first.md): a `NetworkException` shows an offline state with a retry action rather than hanging, and a 401 falls back to the plain empty state (the `SyncStatusShell` banner above it already surfaces that, so the screen doesn't duplicate the message). Also has the logout action.
 - **`TripDashboardScreen`** — bottom `NavigationBar` with the five sections issue #2 calls for (Days/Places/Budget/Packing/Todos), each a placeholder. The Places tab also previews every `PlaceCategory` swatch as a visual check of the design tokens.
 
 ## Deferred
 
 Left for later slices of issue #2, noted here rather than guessed at:
 
-- Local caching strategy (what's cached, invalidation) — belongs with [#21](https://github.com/ryanmac8/trek-native-app/issues/21)'s offline-sync mechanism.
+- Local caching/offline writes for trips (and everything else in the data model) — belongs with [#21](https://github.com/ryanmac8/trek-native-app/issues/21)'s offline-sync mechanism. `TripListScreen`'s reads are network-only for now.
 - Form fields, date/time pickers, currency input — no screen shape to design them against yet.
 - Android adaptive icon foreground/background layers — the launcher icon currently uses the simpler legacy (non-adaptive) path.
