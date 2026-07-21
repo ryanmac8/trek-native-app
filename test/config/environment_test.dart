@@ -20,11 +20,17 @@ void main() {
 
     test('fromName is case-insensitive', () {
       expect(EnvironmentConfig.fromName('DEV').environment, Environment.dev);
-      expect(EnvironmentConfig.fromName('Staging').environment, Environment.staging);
+      expect(
+        EnvironmentConfig.fromName('Staging').environment,
+        Environment.staging,
+      );
     });
 
     test('fromName falls back to prod for unknown or missing input', () {
-      expect(EnvironmentConfig.fromName('nonsense').environment, Environment.prod);
+      expect(
+        EnvironmentConfig.fromName('nonsense').environment,
+        Environment.prod,
+      );
       expect(EnvironmentConfig.fromName(null).environment, Environment.prod);
       expect(EnvironmentConfig.fromName('').environment, Environment.prod);
     });

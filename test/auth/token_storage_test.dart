@@ -54,7 +54,10 @@ void main() {
 
     test('write() then read() round-trips the session token', () async {
       final storage = SecureTokenStorage();
-      final token = SessionToken(token: 'jwt-1', expiresAt: DateTime.utc(2030, 1, 1));
+      final token = SessionToken(
+        token: 'jwt-1',
+        expiresAt: DateTime.utc(2030, 1, 1),
+      );
 
       await storage.write(token);
       final result = await storage.read();
@@ -65,7 +68,9 @@ void main() {
 
     test('clear() removes the stored token', () async {
       final storage = SecureTokenStorage();
-      await storage.write(SessionToken(token: 'a', expiresAt: DateTime.utc(2030, 1, 1)));
+      await storage.write(
+        SessionToken(token: 'a', expiresAt: DateTime.utc(2030, 1, 1)),
+      );
 
       await storage.clear();
 

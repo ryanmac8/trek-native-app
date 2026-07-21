@@ -24,11 +24,11 @@ class ApiClient {
     Future<String?> Function()? getAccessToken,
     Future<bool> Function()? onUnauthorized,
     Duration timeout = const Duration(seconds: 15),
-  })  : _baseUrl = baseUrl,
-        _httpClient = httpClient ?? http.Client(),
-        _getAccessToken = getAccessToken,
-        _onUnauthorized = onUnauthorized,
-        _timeout = timeout;
+  }) : _baseUrl = baseUrl,
+       _httpClient = httpClient ?? http.Client(),
+       _getAccessToken = getAccessToken,
+       _onUnauthorized = onUnauthorized,
+       _timeout = timeout;
 
   final String _baseUrl;
   final http.Client _httpClient;
@@ -72,7 +72,12 @@ class ApiClient {
 
     http.Response response;
     try {
-      response = await _dispatch(method, uri, headers, encodedBody).timeout(_timeout);
+      response = await _dispatch(
+        method,
+        uri,
+        headers,
+        encodedBody,
+      ).timeout(_timeout);
     } on TimeoutException {
       throw const NetworkException();
     } on SocketException {
@@ -113,13 +118,17 @@ class ApiClient {
 
   dynamic _decode(http.Response response) {
     final statusCode = response.statusCode;
-    final decodedBody = response.body.isEmpty ? null : jsonDecode(response.body);
+    final decodedBody = response.body.isEmpty
+        ? null
+        : jsonDecode(response.body);
 
     if (statusCode >= 200 && statusCode < 300) {
       return decodedBody;
     }
 
-    final message = _extractMessage(decodedBody) ?? 'Request failed with status $statusCode.';
+    final message =
+        _extractMessage(decodedBody) ??
+        'Request failed with status $statusCode.';
     final code = _extractCode(decodedBody);
 
     switch (statusCode) {

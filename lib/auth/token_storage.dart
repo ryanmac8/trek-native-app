@@ -17,7 +17,7 @@ abstract class TokenStorage {
 /// restarts but is inaccessible outside the app sandbox.
 class SecureTokenStorage implements TokenStorage {
   SecureTokenStorage({FlutterSecureStorage? storage})
-      : _storage = storage ?? const FlutterSecureStorage();
+    : _storage = storage ?? const FlutterSecureStorage();
 
   static const _tokenKey = 'trek.auth.session_token';
 
@@ -27,12 +27,17 @@ class SecureTokenStorage implements TokenStorage {
   Future<SessionToken?> read() async {
     final raw = await _storage.read(key: _tokenKey);
     if (raw == null) return null;
-    return SessionToken.fromStorageJson(jsonDecode(raw) as Map<String, dynamic>);
+    return SessionToken.fromStorageJson(
+      jsonDecode(raw) as Map<String, dynamic>,
+    );
   }
 
   @override
   Future<void> write(SessionToken token) {
-    return _storage.write(key: _tokenKey, value: jsonEncode(token.toStorageJson()));
+    return _storage.write(
+      key: _tokenKey,
+      value: jsonEncode(token.toStorageJson()),
+    );
   }
 
   @override

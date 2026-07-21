@@ -6,7 +6,8 @@ import '../test_helpers.dart';
 void main() {
   group('SessionToken.fromJwt', () {
     test('decodes the exp claim into expiresAt', () {
-      final expSeconds = DateTime.utc(2030, 1, 1).millisecondsSinceEpoch ~/ 1000;
+      final expSeconds =
+          DateTime.utc(2030, 1, 1).millisecondsSinceEpoch ~/ 1000;
       final jwt = fakeJwt({'id': 1, 'exp': expSeconds});
 
       final token = SessionToken.fromJwt(jwt);
@@ -17,7 +18,8 @@ void main() {
     });
 
     test('isExpired is true once the exp claim is in the past', () {
-      final expSeconds = DateTime.utc(2000, 1, 1).millisecondsSinceEpoch ~/ 1000;
+      final expSeconds =
+          DateTime.utc(2000, 1, 1).millisecondsSinceEpoch ~/ 1000;
       final jwt = fakeJwt({'id': 1, 'exp': expSeconds});
 
       expect(SessionToken.fromJwt(jwt).isExpired, isTrue);
@@ -36,7 +38,10 @@ void main() {
 
   group('SessionToken storage round-trip', () {
     test('toStorageJson/fromStorageJson preserves token and expiry', () {
-      final token = SessionToken(token: 'abc', expiresAt: DateTime.utc(2030, 1, 1));
+      final token = SessionToken(
+        token: 'abc',
+        expiresAt: DateTime.utc(2030, 1, 1),
+      );
 
       final restored = SessionToken.fromStorageJson(token.toStorageJson());
 

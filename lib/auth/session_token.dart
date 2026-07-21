@@ -17,18 +17,25 @@ class SessionToken {
   factory SessionToken.fromJwt(String token) {
     final parts = token.split('.');
     if (parts.length != 3) {
-      throw const FormatException('Not a valid JWT (expected 3 dot-separated segments).');
+      throw const FormatException(
+        'Not a valid JWT (expected 3 dot-separated segments).',
+      );
     }
 
     final normalized = base64Url.normalize(parts[1]);
     final payload = jsonDecode(utf8.decode(base64Url.decode(normalized)));
     if (payload is! Map<String, dynamic> || payload['exp'] is! int) {
-      throw const FormatException('JWT payload is missing a numeric "exp" claim.');
+      throw const FormatException(
+        'JWT payload is missing a numeric "exp" claim.',
+      );
     }
 
     return SessionToken(
       token: token,
-      expiresAt: DateTime.fromMillisecondsSinceEpoch((payload['exp'] as int) * 1000, isUtc: true),
+      expiresAt: DateTime.fromMillisecondsSinceEpoch(
+        (payload['exp'] as int) * 1000,
+        isUtc: true,
+      ),
     );
   }
 
@@ -38,9 +45,9 @@ class SessionToken {
   bool get isExpired => DateTime.now().toUtc().isAfter(expiresAt);
 
   Map<String, dynamic> toStorageJson() => {
-        'token': token,
-        'expiresAt': expiresAt.toIso8601String(),
-      };
+    'token': token,
+    'expiresAt': expiresAt.toIso8601String(),
+  };
 
   factory SessionToken.fromStorageJson(Map<String, dynamic> json) {
     return SessionToken(

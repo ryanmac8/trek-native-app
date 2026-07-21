@@ -34,9 +34,11 @@ class MfaRequired extends LoginResult {
 /// [ApiClient] (no bearer token injected), since login/logout happen before
 /// or independent of an existing session.
 class AuthService {
-  AuthService({required ApiClient apiClient, required TokenStorage tokenStorage})
-      : _apiClient = apiClient,
-        _tokenStorage = tokenStorage;
+  AuthService({
+    required ApiClient apiClient,
+    required TokenStorage tokenStorage,
+  }) : _apiClient = apiClient,
+       _tokenStorage = tokenStorage;
 
   final ApiClient _apiClient;
   final TokenStorage _tokenStorage;
@@ -57,11 +59,16 @@ class AuthService {
     required String password,
     bool rememberMe = false,
   }) async {
-    final response = await _apiClient.post('/api/auth/login', body: {
-      'email': email,
-      'password': password,
-      'remember_me': rememberMe,
-    }) as Map<String, dynamic>;
+    final response =
+        await _apiClient.post(
+              '/api/auth/login',
+              body: {
+                'email': email,
+                'password': password,
+                'remember_me': rememberMe,
+              },
+            )
+            as Map<String, dynamic>;
 
     if (response['mfa_required'] == true) {
       return MfaRequired(response['mfa_token'] as String);
@@ -81,11 +88,16 @@ class AuthService {
     required String code,
     bool rememberMe = false,
   }) async {
-    final response = await _apiClient.post('/api/auth/mfa/verify-login', body: {
-      'mfa_token': mfaToken,
-      'code': code,
-      'remember_me': rememberMe,
-    }) as Map<String, dynamic>;
+    final response =
+        await _apiClient.post(
+              '/api/auth/mfa/verify-login',
+              body: {
+                'mfa_token': mfaToken,
+                'code': code,
+                'remember_me': rememberMe,
+              },
+            )
+            as Map<String, dynamic>;
 
     final token = SessionToken.fromJwt(response['token'] as String);
     await _tokenStorage.write(token);
