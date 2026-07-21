@@ -1,17 +1,38 @@
 import 'package:flutter/foundation.dart';
 
 import '../network/api_client.dart';
-import 'auth_tokens.dart';
+import 'session_token.dart';
 import 'token_storage.dart';
 
-/// Owns the login/logout/refresh flow against Trek's auth endpoints and
-/// persists the resulting tokens via [TokenStorage].
+/// The outcome of [AuthService.login]: either a completed session, or a
+/// signal that the account has TOTP MFA enabled and a follow-up call to
+/// [AuthService.verifyMfaLogin] is required to finish signing in.
+sealed class LoginResult {
+  const LoginResult();
+}
+
+class LoggedIn extends LoginResult {
+  const LoggedIn(this.token);
+  final SessionToken token;
+}
+
+class MfaRequired extends LoginResult {
+  const MfaRequired(this.mfaToken);
+
+  /// Short-lived (5 minute) token to pass to [AuthService.verifyMfaLogin]
+  /// along with the user's TOTP code.
+  final String mfaToken;
+}
+
+/// Owns Trek's login/MFA/logout flow and persists the resulting session via
+/// [TokenStorage].
 ///
-/// [apiClient] should be an unauthenticated [ApiClient] (no bearer token
-/// injected), since these endpoints are called before a session exists or to
-/// establish a new one. Wiring [currentAccessToken] as the app's main
-/// [ApiClient]'s `getAccessToken` and [refreshTokens] as its
-/// `onUnauthorized` is part of the app-shell composition tracked in issue #2.
+/// Trek issues a single JWT per session (returned as `token`, and also set
+/// as an httpOnly cookie for the web PWA) — there is no refresh-token
+/// exchange for password logins, so once the JWT's `exp` claim passes the
+/// user must log in again. [apiClient] should be an unauthenticated
+/// [ApiClient] (no bearer token injected), since login/logout happen before
+/// or independent of an existing session.
 class AuthService {
   AuthService({required ApiClient apiClient, required TokenStorage tokenStorage})
       : _apiClient = apiClient,
@@ -20,75 +41,93 @@ class AuthService {
   final ApiClient _apiClient;
   final TokenStorage _tokenStorage;
 
-  /// Whether a session is currently active. Updated after every
-  /// login/logout/refresh so UI can listen and react (e.g. redirect to the
-  /// login screen).
+  /// Whether a non-expired session is currently stored. Updated after every
+  /// login/logout/expiry check so UI can listen and react (e.g. redirect to
+  /// the login screen).
   final ValueNotifier<bool> isAuthenticated = ValueNotifier(false);
 
   /// Restores session state from storage; call once at app startup.
   Future<void> restoreSession() async {
-    final tokens = await _tokenStorage.read();
-    isAuthenticated.value = tokens != null;
+    final token = await currentAccessToken;
+    isAuthenticated.value = token != null;
   }
 
-  Future<AuthTokens> login({required String email, required String password}) async {
-    final response = await _apiClient.post(
-      '/auth/login',
-      body: {'email': email, 'password': password},
-    );
-    final tokens = AuthTokens.fromJson(response as Map<String, dynamic>);
-    await _tokenStorage.write(tokens);
+  Future<LoginResult> login({
+    required String email,
+    required String password,
+    bool rememberMe = false,
+  }) async {
+    final response = await _apiClient.post('/api/auth/login', body: {
+      'email': email,
+      'password': password,
+      'remember_me': rememberMe,
+    }) as Map<String, dynamic>;
+
+    if (response['mfa_required'] == true) {
+      return MfaRequired(response['mfa_token'] as String);
+    }
+
+    final token = SessionToken.fromJwt(response['token'] as String);
+    await _tokenStorage.write(token);
     isAuthenticated.value = true;
-    return tokens;
+    return LoggedIn(token);
+  }
+
+  /// Completes a login that returned [MfaRequired], exchanging the
+  /// short-lived `mfaToken` plus the user's current TOTP `code` for a full
+  /// session token.
+  Future<SessionToken> verifyMfaLogin({
+    required String mfaToken,
+    required String code,
+    bool rememberMe = false,
+  }) async {
+    final response = await _apiClient.post('/api/auth/mfa/verify-login', body: {
+      'mfa_token': mfaToken,
+      'code': code,
+      'remember_me': rememberMe,
+    }) as Map<String, dynamic>;
+
+    final token = SessionToken.fromJwt(response['token'] as String);
+    await _tokenStorage.write(token);
+    isAuthenticated.value = true;
+    return token;
   }
 
   Future<void> logout() async {
     try {
-      await _apiClient.post('/auth/logout');
+      await _apiClient.post('/api/auth/logout');
     } on Exception {
-      // Best-effort: the session is cleared locally regardless of whether
-      // the server-side revoke succeeds.
+      // Best-effort: the local session is cleared regardless of whether the
+      // server-side cookie clear succeeds.
     } finally {
       await _tokenStorage.clear();
       isAuthenticated.value = false;
     }
   }
 
-  /// Attempts to exchange the stored refresh token for a new token pair.
-  /// Returns `null` (and clears the session) if there is no refresh token or
-  /// the exchange is rejected.
-  Future<AuthTokens?> refreshTokens() async {
-    final current = await _tokenStorage.read();
-    if (current == null) {
-      isAuthenticated.value = false;
-      return null;
-    }
-
-    try {
-      final response = await _apiClient.post(
-        '/auth/refresh',
-        body: {'refreshToken': current.refreshToken},
-      );
-      final tokens = AuthTokens.fromJson(response as Map<String, dynamic>);
-      await _tokenStorage.write(tokens);
-      isAuthenticated.value = true;
-      return tokens;
-    } on Exception {
+  /// The current session token, or `null` if there is no session or it has
+  /// expired. Trek has no refresh flow for password logins, so an expired
+  /// token means the stored session is cleared and the user must log in
+  /// again — it is not silently renewed.
+  Future<String?> get currentAccessToken async {
+    final token = await _tokenStorage.read();
+    if (token == null) return null;
+    if (token.isExpired) {
       await _tokenStorage.clear();
       isAuthenticated.value = false;
       return null;
     }
+    return token.token;
   }
 
-  /// The current access token, transparently refreshing it first if expired.
-  /// Returns `null` if there is no session or the refresh fails.
-  Future<String?> get currentAccessToken async {
-    final tokens = await _tokenStorage.read();
-    if (tokens == null) return null;
-    if (tokens.isExpired) {
-      final refreshed = await refreshTokens();
-      return refreshed?.accessToken;
-    }
-    return tokens.accessToken;
+  /// Wire this into an authenticated [ApiClient]'s `onUnauthorized` callback.
+  /// A 401 from Trek (e.g. the token's `password_version` was invalidated by
+  /// a password change on another device) means the session is dead — there
+  /// is nothing to refresh, so this always clears local state and returns
+  /// `false` (never retry).
+  Future<bool> handleUnauthorized() async {
+    await _tokenStorage.clear();
+    isAuthenticated.value = false;
+    return false;
   }
 }

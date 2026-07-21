@@ -1,6 +1,6 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:trek/auth/auth_tokens.dart';
+import 'package:trek/auth/session_token.dart';
 import 'package:trek/auth/token_storage.dart';
 
 /// Fake handler for the `flutter_secure_storage` plugin channel, standing in
@@ -52,31 +52,20 @@ void main() {
       expect(await storage.read(), isNull);
     });
 
-    test('write() then read() round-trips the tokens', () async {
+    test('write() then read() round-trips the session token', () async {
       final storage = SecureTokenStorage();
-      final tokens = AuthTokens(
-        accessToken: 'access-1',
-        refreshToken: 'refresh-1',
-        expiresAt: DateTime.utc(2030, 1, 1),
-      );
+      final token = SessionToken(token: 'jwt-1', expiresAt: DateTime.utc(2030, 1, 1));
 
-      await storage.write(tokens);
+      await storage.write(token);
       final result = await storage.read();
 
-      expect(result?.accessToken, 'access-1');
-      expect(result?.refreshToken, 'refresh-1');
+      expect(result?.token, 'jwt-1');
       expect(result?.expiresAt, DateTime.utc(2030, 1, 1));
     });
 
-    test('clear() removes stored tokens', () async {
+    test('clear() removes the stored token', () async {
       final storage = SecureTokenStorage();
-      await storage.write(
-        AuthTokens(
-          accessToken: 'a',
-          refreshToken: 'r',
-          expiresAt: DateTime.utc(2030, 1, 1),
-        ),
-      );
+      await storage.write(SessionToken(token: 'a', expiresAt: DateTime.utc(2030, 1, 1)));
 
       await storage.clear();
 

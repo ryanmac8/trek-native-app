@@ -120,38 +120,37 @@ class ApiClient {
     }
 
     final message = _extractMessage(decodedBody) ?? 'Request failed with status $statusCode.';
+    final code = _extractCode(decodedBody);
 
     switch (statusCode) {
       case 401:
-        throw UnauthorizedException(message);
+        throw UnauthorizedException(message, code);
       case 403:
-        throw ForbiddenException(message);
+        throw ForbiddenException(message, code);
       case 400:
       case 422:
-        throw ValidationException(message, _extractFieldErrors(decodedBody));
+        throw ValidationException(message, code);
       default:
         throw ServerException(statusCode, message);
     }
   }
 
+  /// Trek's error responses use `{ error: string, code?: string }`, not
+  /// `{ message: string }` — the latter is checked too, for forward
+  /// compatibility with any endpoint that doesn't follow the convention.
   String? _extractMessage(dynamic decodedBody) {
-    if (decodedBody is Map<String, dynamic> && decodedBody['message'] is String) {
-      return decodedBody['message'] as String;
+    if (decodedBody is Map<String, dynamic>) {
+      final value = decodedBody['error'] ?? decodedBody['message'];
+      if (value is String) return value;
     }
     return null;
   }
 
-  Map<String, List<String>> _extractFieldErrors(dynamic decodedBody) {
-    if (decodedBody is Map<String, dynamic> && decodedBody['errors'] is Map) {
-      final rawErrors = decodedBody['errors'] as Map;
-      return rawErrors.map((key, value) {
-        final messages = value is List
-            ? value.map((e) => e.toString()).toList()
-            : <String>[value.toString()];
-        return MapEntry(key.toString(), messages);
-      });
+  String? _extractCode(dynamic decodedBody) {
+    if (decodedBody is Map<String, dynamic> && decodedBody['code'] is String) {
+      return decodedBody['code'] as String;
     }
-    return const {};
+    return null;
   }
 
   /// Releases the underlying HTTP client's resources.
