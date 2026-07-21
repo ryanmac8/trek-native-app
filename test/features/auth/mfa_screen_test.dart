@@ -63,6 +63,13 @@ void main() {
               ),
             ),
           ),
+          apiClientProvider.overrideWithValue(
+            ApiClient(
+              baseUrl: 'https://trek.example.com',
+              httpClient: MockClient((request) async => _json({'trips': []})),
+            ),
+          ),
+          tripsLocalStoreProvider.overrideWithValue(InMemoryTripsLocalStore()),
         ],
         child: Consumer(
           builder: (context, ref, _) =>

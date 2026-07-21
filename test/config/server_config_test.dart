@@ -46,17 +46,21 @@ void main() {
   });
 
   group('ServerConfig.resolveBaseUrl', () {
-    test('uses the public URL when no private URL is configured', () {
+    test('uses the public URL when no private endpoints are configured', () {
       const config = ServerConfig(publicUrl: 'https://trek.example.com');
 
       expect(config.resolveBaseUrl('HomeWifi'), 'https://trek.example.com');
     });
 
-    test('uses the public URL when not on a trusted network', () {
+    test('uses the public URL when not on any endpoint\'s network', () {
       const config = ServerConfig(
         publicUrl: 'https://trek.example.com',
-        privateUrl: 'http://192.168.1.50:3000',
-        trustedWifiNetworks: {'HomeWifi'},
+        privateEndpoints: [
+          PrivateEndpoint(
+            url: 'http://192.168.1.50:3000',
+            wifiNetwork: 'HomeWifi',
+          ),
+        ],
       );
 
       expect(
@@ -66,14 +70,31 @@ void main() {
       expect(config.resolveBaseUrl(null), 'https://trek.example.com');
     });
 
-    test('uses the private URL when on a trusted network', () {
+    test('uses the matching endpoint\'s URL when on its Wi-Fi network', () {
       const config = ServerConfig(
         publicUrl: 'https://trek.example.com',
-        privateUrl: 'http://192.168.1.50:3000',
-        trustedWifiNetworks: {'HomeWifi'},
+        privateEndpoints: [
+          PrivateEndpoint(
+            url: 'http://192.168.1.50:3000',
+            wifiNetwork: 'HomeWifi',
+          ),
+        ],
       );
 
       expect(config.resolveBaseUrl('HomeWifi'), 'http://192.168.1.50:3000');
+    });
+
+    test('picks the right endpoint among several by Wi-Fi network', () {
+      const config = ServerConfig(
+        publicUrl: 'https://trek.example.com',
+        privateEndpoints: [
+          PrivateEndpoint(url: 'http://192.168.1.50:3000', wifiNetwork: 'Home'),
+          PrivateEndpoint(url: 'http://10.0.0.5:3000', wifiNetwork: 'Office'),
+        ],
+      );
+
+      expect(config.resolveBaseUrl('Office'), 'http://10.0.0.5:3000');
+      expect(config.resolveBaseUrl('Home'), 'http://192.168.1.50:3000');
     });
   });
 
@@ -99,37 +120,56 @@ void main() {
       final result = await storage.read();
 
       expect(result?.publicUrl, 'https://trek.example.com');
-      expect(result?.privateUrl, isNull);
-      expect(result?.trustedWifiNetworks, isEmpty);
+      expect(result?.privateEndpoints, isEmpty);
     });
 
     test(
-      'write() then read() round-trips public + private + trusted networks',
+      'write() then read() round-trips public URL + several private endpoints',
       () async {
         await storage.write(
           const ServerConfig(
             publicUrl: 'https://trek.example.com',
-            privateUrl: 'http://192.168.1.50:3000',
-            trustedWifiNetworks: {'HomeWifi', 'GarageWifi'},
+            privateEndpoints: [
+              PrivateEndpoint(
+                url: 'http://192.168.1.50:3000',
+                wifiNetwork: 'HomeWifi',
+              ),
+              PrivateEndpoint(
+                url: 'http://10.0.0.5:3000',
+                wifiNetwork: 'GarageWifi',
+              ),
+            ],
           ),
         );
 
         final result = await storage.read();
 
         expect(result?.publicUrl, 'https://trek.example.com');
-        expect(result?.privateUrl, 'http://192.168.1.50:3000');
-        expect(result?.trustedWifiNetworks, {'HomeWifi', 'GarageWifi'});
+        expect(result?.privateEndpoints, [
+          const PrivateEndpoint(
+            url: 'http://192.168.1.50:3000',
+            wifiNetwork: 'HomeWifi',
+          ),
+          const PrivateEndpoint(
+            url: 'http://10.0.0.5:3000',
+            wifiNetwork: 'GarageWifi',
+          ),
+        ]);
       },
     );
 
     test(
-      'write() without a private URL clears any previously stored one',
+      'write() without private endpoints clears any previously stored ones',
       () async {
         await storage.write(
           const ServerConfig(
             publicUrl: 'https://trek.example.com',
-            privateUrl: 'http://192.168.1.50:3000',
-            trustedWifiNetworks: {'HomeWifi'},
+            privateEndpoints: [
+              PrivateEndpoint(
+                url: 'http://192.168.1.50:3000',
+                wifiNetwork: 'HomeWifi',
+              ),
+            ],
           ),
         );
 
@@ -138,8 +178,7 @@ void main() {
         );
 
         final result = await storage.read();
-        expect(result?.privateUrl, isNull);
-        expect(result?.trustedWifiNetworks, isEmpty);
+        expect(result?.privateEndpoints, isEmpty);
       },
     );
 

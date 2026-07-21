@@ -33,6 +33,14 @@ Future<void> _pumpLoggedOutApp(
             initial: const ServerConfig(publicUrl: 'https://trek.example.com'),
           ),
         ),
+        // The trip list fetches on mount once login lands there.
+        apiClientProvider.overrideWithValue(
+          ApiClient(
+            baseUrl: 'https://trek.example.com',
+            httpClient: MockClient((request) async => _json({'trips': []})),
+          ),
+        ),
+        tripsLocalStoreProvider.overrideWithValue(InMemoryTripsLocalStore()),
       ],
       child: Consumer(
         builder: (context, ref, _) =>

@@ -26,6 +26,10 @@ void main() {
               tokenStorage: InMemoryTokenStorage(),
             ),
           ),
+          // Avoids the local_auth platform channel, also unmocked here.
+          biometricAuthServiceProvider.overrideWithValue(
+            FakeBiometricAuthService(),
+          ),
         ],
         child: const TrekApp(),
       ),
@@ -53,6 +57,9 @@ void main() {
               apiClient: ApiClient(baseUrl: 'https://placeholder.example.com'),
               tokenStorage: ThrowingTokenStorage(),
             ),
+          ),
+          biometricAuthServiceProvider.overrideWithValue(
+            FakeBiometricAuthService(),
           ),
         ],
         child: const TrekApp(),
