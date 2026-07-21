@@ -23,7 +23,9 @@ abstract final class AppMessenger {
 
   static void showInfo(String message) => _show(message, AppMessageType.info);
 
-  static void _show(String message, AppMessageType type) {
+  static const _maxMountRetries = 5;
+
+  static void _show(String message, AppMessageType type, [int retry = 0]) {
     final messengerState = scaffoldMessengerKey.currentState;
     // No app shell mounted yet (e.g. called before the first frame) — drop
     // rather than crash; there's nowhere to show it yet.
@@ -35,14 +37,25 @@ abstract final class AppMessenger {
       AppMessageType.info => AppColors.info,
     };
 
-    messengerState
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(message),
-          backgroundColor: color,
-          behavior: SnackBarBehavior.floating,
-        ),
+    try {
+      messengerState
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text(message),
+            backgroundColor: color,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+    } catch (_) {
+      // ScaffoldMessenger.showSnackBar requires a mounted Scaffold
+      // descendant — right after startup, go_router's redirect is still
+      // resolving asynchronously and no route (hence no Scaffold) has
+      // mounted yet. Retry a few frames rather than lose the message.
+      if (retry >= _maxMountRetries) return;
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _show(message, type, retry + 1),
       );
+    }
   }
 }

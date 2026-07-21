@@ -25,6 +25,13 @@ class TrekApp extends ConsumerStatefulWidget {
 class _TrekAppState extends ConsumerState<TrekApp> {
   late final Future<void> _startup;
 
+  // Set only if restoreSession throws; consumed (and cleared) the first
+  // time build() reaches the router phase, via a post-frame callback so
+  // AppMessenger fires against the router's persistent ScaffoldMessenger
+  // rather than the splash phase's, which is torn down the moment startup
+  // completes and would otherwise silently drop the message.
+  Object? _startupError;
+
   @override
   void initState() {
     super.initState();
@@ -32,10 +39,22 @@ class _TrekAppState extends ConsumerState<TrekApp> {
   }
 
   Future<void> _initialize() async {
-    await Future.wait([
-      ref.read(authServiceProvider).restoreSession(),
-      Future.delayed(_minSplashDuration),
-    ]);
+    try {
+      await Future.wait([
+        ref.read(authServiceProvider).restoreSession(),
+        Future.delayed(_minSplashDuration),
+      ]);
+    } catch (error, stackTrace) {
+      // Fail closed: isAuthenticated stays at its default false, so the
+      // user lands on /login rather than the app hanging or crashing.
+      // restoreSession is a best-effort local read (see
+      // AuthService.currentAccessToken) — flutter_secure_storage is known
+      // to throw in the wild (Keychain access after a backup restore,
+      // Keystore invalidated by a biometric/lock-screen change), so this
+      // has to degrade gracefully rather than propagate.
+      debugPrint('TrekApp: session restore failed: $error\n$stackTrace');
+      _startupError = error;
+    }
   }
 
   @override
@@ -45,6 +64,14 @@ class _TrekAppState extends ConsumerState<TrekApp> {
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) {
           return const MaterialApp(title: 'Trek', home: SplashScreen());
+        }
+        if (_startupError != null) {
+          _startupError = null;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            AppMessenger.showError(
+              'Could not restore your session. Please log in.',
+            );
+          });
         }
         return MaterialApp.router(
           title: 'Trek',

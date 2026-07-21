@@ -31,6 +31,22 @@ class InMemoryTokenStorage implements TokenStorage {
   Future<void> clear() async => _token = null;
 }
 
+/// [TokenStorage] fake that always throws on read — simulates
+/// `flutter_secure_storage` failing (e.g. Keychain access after a backup
+/// restore, Keystore invalidated by a biometric/lock-screen change).
+class ThrowingTokenStorage implements TokenStorage {
+  @override
+  Future<SessionToken?> read() async {
+    throw StateError('simulated secure storage failure');
+  }
+
+  @override
+  Future<void> write(SessionToken token) async {}
+
+  @override
+  Future<void> clear() async {}
+}
+
 /// In-memory [ServerConfigStorage] fake — avoids the `shared_preferences`
 /// platform channel in widget tests.
 class InMemoryServerConfigStorage implements ServerConfigStorage {
