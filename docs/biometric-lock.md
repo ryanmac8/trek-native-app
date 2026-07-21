@@ -25,7 +25,10 @@ There's no re-lock on backgrounding/resuming in this first version — only cold
 - **iOS**: `NSFaceIDUsageDescription` in `ios/Runner/Info.plist` (required by Apple — the app is rejected without it).
 - **Android**: `MainActivity` extends `FlutterFragmentActivity`, not `FlutterActivity` — Android's `BiometricPrompt` requires a `FragmentActivity` host. `android.permission.USE_BIOMETRIC` is declared in `AndroidManifest.xml`.
 
+## Passcode fallback
+
+`authenticate()` leaves `biometricOnly` at its default (`false`), so the OS offers the device's own passcode/PIN/pattern as a fallback within the same native prompt if biometrics fail or aren't set up — this is `local_auth`'s built-in behavior, not something built here. "Log out instead" (a full password re-login) is a separate, further fallback for when the user doesn't want to or can't use the device passcode either (e.g. switching accounts on a shared device).
+
 ## What this doesn't do
 
-- Doesn't add a fallback local PIN/passcode — "Log out instead" (a full password re-login) is the only fallback if biometrics fail or aren't set up.
 - Doesn't let the user opt out once biometrics are available on their device — there's no settings screen yet ([#27](https://github.com/ryanmac8/trek-native-app/issues/27)) to add a toggle to.

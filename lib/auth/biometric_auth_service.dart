@@ -45,7 +45,9 @@ class DeviceBiometricAuthService implements BiometricAuthService {
     try {
       final result = await _localAuth.authenticate(
         localizedReason: 'Unlock Trek',
-        biometricOnly: true,
+        // false (the default) lets the OS offer device passcode/PIN/pattern
+        // as a fallback within the same native prompt if biometrics fail —
+        // `biometricOnly: true` would suppress that fallback entirely.
         // Retry automatically on foregrounding instead of failing outright
         // if the OS interrupts the prompt by backgrounding the app.
         persistAcrossBackgrounding: true,
