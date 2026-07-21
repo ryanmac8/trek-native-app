@@ -41,9 +41,16 @@ dependencies:
   # Secure, platform-native storage (Keychain / Android Keystore) for auth tokens.
   flutter_secure_storage: ^9.2.2
 
+  # Plain (non-secure) local storage for the self-hosted server URL — not a
+  # secret, so this is deliberately separate from flutter_secure_storage.
+  shared_preferences: ^2.3.3
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
+
+  # In-memory shared_preferences fake used by server_config_test.dart.
+  shared_preferences_platform_interface: ^2.4.1
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is

@@ -1,6 +1,6 @@
 # Networking & Auth Foundation
 
-Status of [issue #1](https://github.com/ryanmac8/trek-native-app/issues/1). This covers the first slice: the HTTP client, error handling, environment config, token storage, and the login/MFA/logout flow. It does not yet include a login screen (that depends on the navigation/design-system work in [issue #2](https://github.com/ryanmac8/trek-native-app/issues/2)) or the full set of Trek data models — those are follow-up PRs against the same issue.
+Status of [issue #1](https://github.com/ryanmac8/trek-native-app/issues/1). This covers the first slice: the HTTP client, error handling, server config, token storage, and the login/MFA/logout flow. It does not yet include a login/server-setup screen (that depends on the navigation/design-system work in [issue #2](https://github.com/ryanmac8/trek-native-app/issues/2)) or the full set of Trek data models — those are follow-up PRs against the same issue.
 
 The auth contract here was checked against Trek's actual backend ([liketrek/TREK](https://github.com/liketrek/TREK), `server/src/nest/auth/`), not guessed — see "What Trek's API actually looks like" below.
 
@@ -8,7 +8,7 @@ The auth contract here was checked against Trek's actual backend ([liketrek/TREK
 
 | File | Purpose |
 | --- | --- |
-| [lib/config/environment.dart](../lib/config/environment.dart) | `Environment` enum (dev/staging/prod) and the base URL for each. Selected via `--dart-define=TREK_ENV=dev\|staging\|prod` at build/run time; defaults to prod. |
+| [lib/config/server_config.dart](../lib/config/server_config.dart) | `ServerConfig` — the user-entered, persisted base URL of the user's own Trek instance (Trek is self-hosted, so there's no fixed dev/staging/prod). `ServerConfigStorage`/`PreferencesServerConfigStorage` persist it in plain local storage (`shared_preferences`) since it isn't a secret. |
 | [lib/network/api_exception.dart](../lib/network/api_exception.dart) | Typed exceptions: `NetworkException`, `UnauthorizedException`, `ForbiddenException`, `ValidationException`, `ServerException` (with status code) — each optionally carrying Trek's machine-readable `code` (e.g. `AUTH_REQUIRED`). |
 | [lib/network/api_client.dart](../lib/network/api_client.dart) | Wraps `package:http`. Resolves paths against a base URL, JSON-encodes/decodes bodies, attaches a bearer token via an injected `getAccessToken` callback, and maps non-2xx responses (Trek's `{ error, code? }` shape) to the exceptions above. |
 | [lib/auth/session_token.dart](../lib/auth/session_token.dart) | `SessionToken` — Trek's single session JWT, decoding its `exp` claim client-side to know when it goes stale. |
@@ -26,9 +26,11 @@ Reading `server/src/nest/auth/` in the real backend corrected several assumption
 - **Endpoints live under `/api/auth/*`** (`login`, `mfa/verify-login`, `logout`), not a bare `/auth/*`.
 - **Validation failures are a flat message**, not a per-field map — `ValidationException` reflects that; there's no `errors: { field: [...] }` shape to parse.
 
-## An open question: fixed environments vs. a self-hosted server URL
+## Why there's no dev/staging/prod environment config
 
-`EnvironmentConfig`'s dev/staging/prod split assumes Trek is a single vendor-run backend, matching how issue #1 describes it ("Environment/config management (API base URL...)"). But the real Trek project is **self-hosted** ("Your trips. Your plan. Your server." — Docker image, Unraid template, etc.), like Nextcloud or Immich: each user runs their own instance at their own URL, so a hardcoded `api.trek.app` won't exist for most users. Getting this right likely means a user-entered/persisted server URL (probably during onboarding, issue [#28](https://github.com/ryanmac8/trek-native-app/issues/28)) rather than fixed per-environment constants. Left as-is for this PR — flagging it here rather than guessing at a bigger change silently.
+An earlier draft of this PR modeled "Environment/config management" (per issue #1's checklist) as a fixed `Environment` enum (dev/staging/prod) with hardcoded base URLs, the way a vendor-run SaaS API would work. That's wrong for Trek: the real project is **self-hosted** ("Your trips. Your plan. Your server." — Docker image, Unraid template, etc.), like Nextcloud or Immich. There is no `api.trek.app` — every user runs their own instance at their own URL. `ServerConfig` reflects that instead: a single user-entered address (e.g. `https://trek.example.com` or `http://192.168.1.50:3000` for a LAN instance), validated and normalized by `ServerConfig.parse`, persisted via `PreferencesServerConfigStorage`, and read by `ApiClient`'s `baseUrl`.
+
+There's still no UI to enter it — that's a server-setup step that belongs in onboarding (issue [#28](https://github.com/ryanmac8/trek-native-app/issues/28)) once #2's navigation exists. Until then, `ServerConfig`/`ApiClient` can be exercised directly (as the tests do) with a URL supplied in code.
 
 ## How the pieces fit together
 
@@ -41,7 +43,7 @@ Reading `server/src/nest/auth/` in the real backend corrected several assumption
 
 ```bash
 flutter pub get
-flutter test test/config/environment_test.dart
+flutter test test/config/server_config_test.dart
 flutter test test/network/api_client_test.dart
 flutter test test/auth/session_token_test.dart
 flutter test test/auth/token_storage_test.dart
@@ -52,4 +54,4 @@ flutter test
 flutter analyze
 ```
 
-All tests run against fakes (`package:http/testing.dart`'s `MockClient` for HTTP, a mocked platform channel for secure storage, hand-built unsigned JWTs for expiry logic) — no real network calls or device/simulator needed.
+All tests run against fakes (`package:http/testing.dart`'s `MockClient` for HTTP, mocked platform channels for secure storage and shared_preferences, hand-built unsigned JWTs for expiry logic) — no real network calls or device/simulator needed.
