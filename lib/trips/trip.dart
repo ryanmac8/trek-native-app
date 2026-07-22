@@ -18,6 +18,9 @@ class Trip {
     this.currency,
     this.dayCount = 0,
     this.placeCount = 0,
+    this.isArchived = false,
+    this.hasPendingEdit = false,
+    this.hasPendingArchiveSync = false,
   });
 
   final int? id;
@@ -29,6 +32,18 @@ class Trip {
   final String? currency;
   final int dayCount;
   final int placeCount;
+  final bool isArchived;
+
+  /// True once a local edit ([TripsRepository.editTrip]) has been applied to
+  /// this trip but hasn't yet been confirmed by the server — retried by the
+  /// next [TripsRepository.refreshTrips] call.
+  final bool hasPendingEdit;
+
+  /// Same idea as [hasPendingEdit], but for an archive/unarchive toggle
+  /// ([TripsRepository.setArchived]) specifically — tracked separately so a
+  /// retry only resends the field it actually changed, since the server
+  /// checks `trip_edit` and `trip_archive` as distinct permissions.
+  final bool hasPendingArchiveSync;
 
   /// True for a trip created locally that hasn't been confirmed by the
   /// server yet — either still queued (offline) or its create request is in
@@ -47,6 +62,7 @@ class Trip {
       currency: json['currency'] as String?,
       dayCount: json['day_count'] as int? ?? 0,
       placeCount: json['place_count'] as int? ?? 0,
+      isArchived: _parseBool(json['is_archived']),
     );
   }
 
@@ -64,6 +80,9 @@ class Trip {
     'currency': currency,
     'day_count': dayCount,
     'place_count': placeCount,
+    'is_archived': isArchived,
+    'has_pending_edit': hasPendingEdit,
+    'has_pending_archive_sync': hasPendingArchiveSync,
   };
 
   factory Trip.fromCacheJson(Map<String, dynamic> json) {
@@ -77,10 +96,42 @@ class Trip {
       currency: json['currency'] as String?,
       dayCount: json['day_count'] as int? ?? 0,
       placeCount: json['place_count'] as int? ?? 0,
+      isArchived: json['is_archived'] as bool? ?? false,
+      hasPendingEdit: json['has_pending_edit'] as bool? ?? false,
+      hasPendingArchiveSync: json['has_pending_archive_sync'] as bool? ?? false,
     );
   }
 
+  Trip copyWith({
+    String? localId,
+    bool? isArchived,
+    bool? hasPendingEdit,
+    bool? hasPendingArchiveSync,
+  }) => Trip(
+    id: id,
+    localId: localId ?? this.localId,
+    title: title,
+    description: description,
+    startDate: startDate,
+    endDate: endDate,
+    currency: currency,
+    dayCount: dayCount,
+    placeCount: placeCount,
+    isArchived: isArchived ?? this.isArchived,
+    hasPendingEdit: hasPendingEdit ?? this.hasPendingEdit,
+    hasPendingArchiveSync: hasPendingArchiveSync ?? this.hasPendingArchiveSync,
+  );
+
   static DateTime? _parseDate(Object? value) {
     return value is String ? DateTime.tryParse(value) : null;
+  }
+
+  /// `is_archived` (and other boolean-ish columns) arrive from the server
+  /// as a SQLite integer (`0`/`1`), not a JSON boolean — confirmed against
+  /// the real `/api/trips` response shape.
+  static bool _parseBool(Object? value) {
+    if (value is bool) return value;
+    if (value is int) return value != 0;
+    return false;
   }
 }

@@ -278,7 +278,17 @@ void main() {
       await tester.tap(find.text('New Zealand'));
       await tester.pumpAndSettle();
 
-      expect(find.text('Trip 20'), findsOneWidget);
+      // The dashboard's app bar shows the trip's real title (read from the
+      // same local cache TripListScreen just populated), not a "Trip 20"
+      // placeholder — checked via the app bar specifically since the trip
+      // list's own "New Zealand" row is still in the tree underneath.
+      expect(
+        find.descendant(
+          of: find.byType(AppBar),
+          matching: find.text('New Zealand'),
+        ),
+        findsOneWidget,
+      );
       // Pushed (not `go`), so there's something to pop back to — a plain
       // `go` would leave no back stack entry and no back button at all.
       final backButton = find.byTooltip('Back');

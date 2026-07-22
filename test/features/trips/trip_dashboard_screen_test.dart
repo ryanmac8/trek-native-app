@@ -3,13 +3,16 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:trek/app/providers.dart';
 import 'package:trek/days/day.dart';
 import 'package:trek/design/place_category_colors.dart';
+import 'package:trek/features/trips/edit_trip_screen.dart';
 import 'package:trek/features/trips/trip_dashboard_screen.dart';
 import 'package:trek/network/api_client.dart';
+import 'package:trek/trips/trip.dart';
 
 import '../../test_helpers.dart';
 
@@ -21,13 +24,40 @@ http.Response _json(Object body, [int statusCode = 200]) {
   );
 }
 
+/// A minimal GoRouter mirroring the real one's `/trips/:tripId` and
+/// `/trips/:tripId/edit` routes — needed because the app bar menu's edit/
+/// delete actions call `context.push`/`context.go`/`context.pop`, which
+/// require a real GoRouter ancestor, not just a plain Navigator.
 Future<void> _pumpDashboard(
   WidgetTester tester, {
   required http.Client daysHttpClient,
   InMemoryDaysLocalStore? localStore,
   InMemoryTripDashboardNavLayoutStore? navLayoutStore,
+  InMemoryTripsLocalStore? tripsLocalStore,
   String tripId = 'trip-1',
 }) async {
+  final router = GoRouter(
+    initialLocation: '/trips/$tripId',
+    routes: [
+      GoRoute(
+        path: '/trips',
+        builder: (context, state) => const Scaffold(body: Text('Trips')),
+      ),
+      GoRoute(
+        path: '/trips/:tripId',
+        builder: (context, state) =>
+            TripDashboardScreen(tripId: state.pathParameters['tripId']!),
+        routes: [
+          GoRoute(
+            path: 'edit',
+            builder: (context, state) =>
+                EditTripScreen(trip: state.extra! as Trip),
+          ),
+        ],
+      ),
+    ],
+  );
+
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
@@ -43,8 +73,11 @@ Future<void> _pumpDashboard(
         tripDashboardNavLayoutStoreProvider.overrideWithValue(
           navLayoutStore ?? InMemoryTripDashboardNavLayoutStore(),
         ),
+        tripsLocalStoreProvider.overrideWithValue(
+          tripsLocalStore ?? InMemoryTripsLocalStore(),
+        ),
       ],
-      child: MaterialApp(home: TripDashboardScreen(tripId: tripId)),
+      child: MaterialApp.router(routerConfig: router),
     ),
   );
   await tester.pumpAndSettle();
@@ -384,5 +417,186 @@ void main() {
       expect(find.text("Couldn't load days."), findsOneWidget);
       expect(find.text('Retry'), findsOneWidget);
     });
+  });
+
+  group('trip menu (edit/archive/delete)', () {
+    Trip nzTrip({bool isArchived = false}) => Trip.fromJson({
+      'id': 20,
+      'title': 'New Zealand',
+      'is_archived': isArchived ? 1 : 0,
+    });
+
+    testWidgets(
+      'shows the trip title and hides the menu when the trip isn\'t cached',
+      (tester) async {
+        await _pumpDashboard(
+          tester,
+          daysHttpClient: MockClient((request) async => _json({'days': []})),
+        );
+
+        expect(find.text('Trip trip-1'), findsOneWidget);
+        expect(find.byIcon(Icons.more_vert), findsNothing);
+      },
+    );
+
+    testWidgets('shows the real title and a menu once the trip is cached', (
+      tester,
+    ) async {
+      await _pumpDashboard(
+        tester,
+        tripId: '20',
+        tripsLocalStore: InMemoryTripsLocalStore(initial: [nzTrip()]),
+        daysHttpClient: MockClient((request) async => _json({'days': []})),
+      );
+
+      expect(find.text('New Zealand'), findsOneWidget);
+
+      await tester.tap(find.byIcon(Icons.more_vert));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Edit'), findsOneWidget);
+      expect(find.text('Archive'), findsOneWidget);
+      expect(find.text('Delete'), findsOneWidget);
+    });
+
+    testWidgets('editing a trip saves it and updates the app bar title', (
+      tester,
+    ) async {
+      final tripsLocalStore = InMemoryTripsLocalStore(initial: [nzTrip()]);
+      await _pumpDashboard(
+        tester,
+        tripId: '20',
+        tripsLocalStore: tripsLocalStore,
+        daysHttpClient: MockClient((request) async {
+          if (request.method == 'PUT') {
+            return _json({
+              'trip': {'id': 20, 'title': 'Aotearoa'},
+            });
+          }
+          return _json({'days': []});
+        }),
+      );
+
+      await tester.tap(find.byIcon(Icons.more_vert));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Edit'));
+      await tester.pumpAndSettle();
+
+      final titleField = find.widgetWithText(TextFormField, 'Title');
+      await tester.enterText(titleField, 'Aotearoa');
+      await tester.tap(find.text('Save changes'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Aotearoa'), findsOneWidget);
+      expect((await tripsLocalStore.read()).single.title, 'Aotearoa');
+    });
+
+    testWidgets('archiving flips the menu label to Unarchive', (tester) async {
+      await _pumpDashboard(
+        tester,
+        tripId: '20',
+        tripsLocalStore: InMemoryTripsLocalStore(initial: [nzTrip()]),
+        daysHttpClient: MockClient((request) async {
+          if (request.method == 'PUT') {
+            return _json({
+              'trip': {'id': 20, 'title': 'New Zealand', 'is_archived': 1},
+            });
+          }
+          return _json({'days': []});
+        }),
+      );
+
+      await tester.tap(find.byIcon(Icons.more_vert));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Archive'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byIcon(Icons.more_vert));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Unarchive'), findsOneWidget);
+    });
+
+    testWidgets(
+      'archiving while offline still flips the label — it stays queued to '
+      'sync, per docs/offline-first.md',
+      (tester) async {
+        await _pumpDashboard(
+          tester,
+          tripId: '20',
+          tripsLocalStore: InMemoryTripsLocalStore(initial: [nzTrip()]),
+          daysHttpClient: MockClient((request) async {
+            if (request.method == 'PUT') {
+              throw http.ClientException('Connection refused');
+            }
+            return _json({'days': []});
+          }),
+        );
+
+        await tester.tap(find.byIcon(Icons.more_vert));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Archive'));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byIcon(Icons.more_vert));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Unarchive'), findsOneWidget);
+      },
+    );
+
+    testWidgets('canceling the delete confirmation keeps the trip', (
+      tester,
+    ) async {
+      await _pumpDashboard(
+        tester,
+        tripId: '20',
+        tripsLocalStore: InMemoryTripsLocalStore(initial: [nzTrip()]),
+        daysHttpClient: MockClient((request) async {
+          if (request.method == 'DELETE') {
+            fail('should not delete when the confirmation is canceled');
+          }
+          return _json({'days': []});
+        }),
+      );
+
+      await tester.tap(find.byIcon(Icons.more_vert));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Delete'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('New Zealand'), findsOneWidget);
+    });
+
+    testWidgets(
+      'confirming delete removes the trip and navigates back to the trip list',
+      (tester) async {
+        final tripsLocalStore = InMemoryTripsLocalStore(initial: [nzTrip()]);
+        await _pumpDashboard(
+          tester,
+          tripId: '20',
+          tripsLocalStore: tripsLocalStore,
+          daysHttpClient: MockClient((request) async {
+            if (request.method == 'DELETE') return _json({'success': true});
+            return _json({'days': []});
+          }),
+        );
+
+        await tester.tap(find.byIcon(Icons.more_vert));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Delete'));
+        await tester.pumpAndSettle();
+
+        // The dialog's own "Delete" button, not the menu item behind it.
+        await tester.tap(find.widgetWithText(TextButton, 'Delete'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Trips'), findsOneWidget);
+        expect(await tripsLocalStore.read(), isEmpty);
+      },
+    );
   });
 }

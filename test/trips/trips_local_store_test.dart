@@ -48,5 +48,21 @@ void main() {
       expect(result, hasLength(1));
       expect(result.single.title, 'Second');
     });
+
+    test(
+      'readPendingDeletes() returns an empty set when nothing is queued',
+      () async {
+        expect(await store.readPendingDeletes(), isEmpty);
+      },
+    );
+
+    test(
+      'writePendingDeletes() then readPendingDeletes() round-trips',
+      () async {
+        await store.writePendingDeletes({1, 2, 3});
+
+        expect(await store.readPendingDeletes(), {1, 2, 3});
+      },
+    );
   });
 }

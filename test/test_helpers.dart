@@ -93,16 +93,27 @@ class InMemoryServerConfigStorage implements ServerConfigStorage {
 /// In-memory [TripsLocalStore] fake — avoids the `shared_preferences`
 /// platform channel in widget/repository tests.
 class InMemoryTripsLocalStore implements TripsLocalStore {
-  InMemoryTripsLocalStore({List<Trip> initial = const []})
-    : _trips = List.of(initial);
+  InMemoryTripsLocalStore({
+    List<Trip> initial = const [],
+    Set<int> pendingDeletes = const {},
+  }) : _trips = List.of(initial),
+       _pendingDeletes = Set.of(pendingDeletes);
 
   List<Trip> _trips;
+  Set<int> _pendingDeletes;
 
   @override
   Future<List<Trip>> read() async => List.of(_trips);
 
   @override
   Future<void> write(List<Trip> trips) async => _trips = List.of(trips);
+
+  @override
+  Future<Set<int>> readPendingDeletes() async => Set.of(_pendingDeletes);
+
+  @override
+  Future<void> writePendingDeletes(Set<int> ids) async =>
+      _pendingDeletes = Set.of(ids);
 }
 
 /// In-memory [DaysLocalStore] fake — avoids the `shared_preferences`

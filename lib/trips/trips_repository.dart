@@ -30,19 +30,37 @@ class TripsRepository {
   Future<List<Trip>> cachedTrips() => _localStore.read();
 
   Future<List<Trip>> refreshTrips() async {
-    final afterRetry = await _retryPendingCreates(await _localStore.read());
+    final stillPendingDeletes = await _retryPendingDeletes();
+    final afterEdits = await _retryPendingEdits(await _localStore.read());
+    final (afterRetry, justSyncedIds) = await _retryPendingCreates(afterEdits);
 
     try {
       final serverTrips = await _tripsApi.listTrips();
-      final serverIds = serverTrips.map((trip) => trip.id).toSet();
+      // A delete that hasn't synced yet (still offline) must not have its
+      // trip reappear just because the list call above happened to reach
+      // the server before the delete retry above did.
+      final visibleServerTrips = serverTrips
+          .where((trip) => !stillPendingDeletes.contains(trip.id))
+          .toList();
+      final serverIds = visibleServerTrips.map((trip) => trip.id).toSet();
       final merged = [
-        ...serverTrips,
-        // Trips this call just retried into existence (or that were
-        // already pending) don't necessarily show up in `serverTrips` yet
-        // — e.g. the retry above raced this list call. Keep them rather
-        // than silently dropping a trip the user just created.
+        ...visibleServerTrips,
         ...afterRetry.where(
-          (trip) => trip.isPending || !serverIds.contains(trip.id),
+          (trip) =>
+              // Still queued (pending create, edit, or archive toggle) —
+              // keep it rather than silently dropping local state the
+              // server hasn't confirmed yet.
+              trip.isPending ||
+              trip.hasPendingEdit ||
+              trip.hasPendingArchiveSync ||
+              // A create that synced moments ago, in this same call, might
+              // not show up in `serverTrips` yet if the list call above
+              // raced it — keep it rather than flash the trip out of
+              // existence for one refresh. A trip that's simply absent for
+              // any other reason has legitimately been archived or deleted
+              // server-side (the default list excludes archived trips), so
+              // it's correctly left out of `merged`.
+              (justSyncedIds.contains(trip.id) && !serverIds.contains(trip.id)),
         ),
       ];
       await _localStore.write(merged);
@@ -99,8 +117,200 @@ class TripsRepository {
     }
   }
 
-  Future<List<Trip>> _retryPendingCreates(List<Trip> trips) async {
+  /// Saves an edit to a trip's title/description/dates/currency. Applies
+  /// the change to the local cache immediately (so the dashboard reflects
+  /// it before any network round-trip) and only rolls it back if the
+  /// server outright rejects it — a [NetworkException] instead leaves the
+  /// edit applied locally, flagged via [Trip.hasPendingEdit] for
+  /// [refreshTrips] to retry.
+  Future<Trip> editTrip({
+    required int id,
+    required String title,
+    String? description,
+    DateTime? startDate,
+    DateTime? endDate,
+    String? currency,
+  }) async {
+    final cached = await _localStore.read();
+    final index = cached.indexWhere((trip) => trip.id == id);
+    if (index == -1) {
+      throw StateError('Cannot edit trip $id: not present in the local cache.');
+    }
+    final previous = cached[index];
+    final optimistic = Trip(
+      id: id,
+      localId: previous.localId,
+      title: title,
+      description: description,
+      startDate: startDate,
+      endDate: endDate,
+      currency: currency,
+      dayCount: previous.dayCount,
+      placeCount: previous.placeCount,
+      isArchived: previous.isArchived,
+      hasPendingEdit: true,
+      hasPendingArchiveSync: previous.hasPendingArchiveSync,
+    );
+    await _replaceInCache(id, optimistic);
+
+    try {
+      final synced = await _tripsApi.updateTrip(
+        id: id,
+        title: title,
+        description: description,
+        startDate: startDate,
+        endDate: endDate,
+        currency: currency,
+      );
+      final reconciled = synced.copyWith(
+        localId: previous.localId,
+        hasPendingArchiveSync: previous.hasPendingArchiveSync,
+      );
+      await _replaceInCache(id, reconciled);
+      return reconciled;
+    } on NetworkException {
+      return optimistic; // stays flagged; refreshTrips() retries it
+    } catch (_) {
+      await _replaceInCache(id, previous);
+      rethrow;
+    }
+  }
+
+  /// Toggles [Trip.isArchived]. Kept separate from [editTrip] so it only
+  /// ever sends `is_archived` to the server — see [TripsApi.archiveTrip].
+  Future<Trip> setArchived({required int id, required bool archived}) async {
+    final cached = await _localStore.read();
+    final index = cached.indexWhere((trip) => trip.id == id);
+    if (index == -1) {
+      throw StateError(
+        'Cannot archive trip $id: not present in the local cache.',
+      );
+    }
+    final previous = cached[index];
+    final optimistic = previous.copyWith(
+      isArchived: archived,
+      hasPendingArchiveSync: true,
+    );
+    await _replaceInCache(id, optimistic);
+
+    try {
+      final synced = await _tripsApi.archiveTrip(id: id, archived: archived);
+      final reconciled = synced.copyWith(
+        localId: previous.localId,
+        hasPendingEdit: previous.hasPendingEdit,
+      );
+      await _replaceInCache(id, reconciled);
+      return reconciled;
+    } on NetworkException {
+      return optimistic; // stays flagged; refreshTrips() retries it
+    } catch (_) {
+      await _replaceInCache(id, previous);
+      rethrow;
+    }
+  }
+
+  /// Removes a trip immediately from the local cache (so it disappears
+  /// from the list right away) and attempts the server delete in the
+  /// background. If that can't reach the server, the id is queued in
+  /// [TripsLocalStore.readPendingDeletes] for [refreshTrips] to retry — the
+  /// trip itself stays gone from the visible cache either way, since the
+  /// user already asked for it to be deleted.
+  Future<void> deleteTrip(int id) async {
+    final cached = await _localStore.read();
+    final index = cached.indexWhere((trip) => trip.id == id);
+    if (index == -1) return;
+    final removed = cached[index];
+    final updatedCache = List.of(cached)..removeAt(index);
+    await _localStore.write(updatedCache);
+
+    try {
+      await _tripsApi.deleteTrip(id);
+    } on NetworkException {
+      final pending = await _localStore.readPendingDeletes();
+      await _localStore.writePendingDeletes({...pending, id});
+    } catch (_) {
+      // A genuine rejection (permissions, a 5xx) — restore the trip rather
+      // than leave the user thinking it's gone when it isn't.
+      final rollback = List.of(await _localStore.read());
+      rollback.insert(index.clamp(0, rollback.length), removed);
+      await _localStore.write(rollback);
+      rethrow;
+    }
+  }
+
+  Future<void> _replaceInCache(int id, Trip trip) async {
+    final cached = await _localStore.read();
+    final index = cached.indexWhere((t) => t.id == id);
+    if (index == -1) return;
+    final updated = List.of(cached)..[index] = trip;
+    await _localStore.write(updated);
+  }
+
+  Future<Set<int>> _retryPendingDeletes() async {
+    final pending = await _localStore.readPendingDeletes();
+    if (pending.isEmpty) return pending;
+    final remaining = <int>{};
+    for (final id in pending) {
+      try {
+        await _tripsApi.deleteTrip(id);
+      } on NetworkException {
+        remaining.add(id); // still offline — keep queued
+      } catch (_) {
+        // Already gone server-side, or a rejection that can't be retried
+        // indefinitely — either way there's nothing left to reconcile,
+        // since the trip is already off the visible cache.
+      }
+    }
+    if (remaining.length != pending.length) {
+      await _localStore.writePendingDeletes(remaining);
+    }
+    return remaining;
+  }
+
+  Future<List<Trip>> _retryPendingEdits(List<Trip> trips) async {
     final result = <Trip>[];
+    for (final trip in trips) {
+      var next = trip;
+      if (trip.hasPendingEdit && trip.id != null) {
+        try {
+          final synced = await _tripsApi.updateTrip(
+            id: trip.id!,
+            title: trip.title,
+            description: trip.description,
+            startDate: trip.startDate,
+            endDate: trip.endDate,
+            currency: trip.currency,
+          );
+          next = synced.copyWith(
+            localId: trip.localId,
+            hasPendingArchiveSync: next.hasPendingArchiveSync,
+          );
+        } on NetworkException {
+          // still offline — keep flagged
+        }
+      }
+      if (next.hasPendingArchiveSync && next.id != null) {
+        try {
+          final synced = await _tripsApi.archiveTrip(
+            id: next.id!,
+            archived: next.isArchived,
+          );
+          next = synced.copyWith(
+            localId: next.localId,
+            hasPendingEdit: next.hasPendingEdit,
+          );
+        } on NetworkException {
+          // still offline — keep flagged
+        }
+      }
+      result.add(next);
+    }
+    return result;
+  }
+
+  Future<(List<Trip>, Set<int>)> _retryPendingCreates(List<Trip> trips) async {
+    final result = <Trip>[];
+    final justSyncedIds = <int>{};
     for (final trip in trips) {
       if (!trip.isPending) {
         result.add(trip);
@@ -114,12 +324,14 @@ class TripsRepository {
           endDate: trip.endDate,
           currency: trip.currency,
         );
-        result.add(_reconcile(trip, synced));
+        final reconciled = _reconcile(trip, synced);
+        result.add(reconciled);
+        justSyncedIds.add(reconciled.id!);
       } on NetworkException {
         result.add(trip); // still offline — keep it queued
       }
     }
-    return result;
+    return (result, justSyncedIds);
   }
 
   Trip _reconcile(Trip pending, Trip synced) {
