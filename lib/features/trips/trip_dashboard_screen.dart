@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
+import '../../app/app_messenger.dart';
 import '../../app/providers.dart';
 import '../../days/day.dart';
 import '../../design/app_spacing.dart';
@@ -9,6 +11,7 @@ import '../../design/widgets/app_list_row.dart';
 import '../../design/widgets/empty_state.dart';
 import '../../design/widgets/skeleton_box.dart';
 import '../../network/api_exception.dart';
+import '../../trips/trip.dart';
 
 /// A section of the trip dashboard's bottom nav. [key] is a stable
 /// identifier persisted by [TripDashboardNavLayoutStore] — unlike [label],
@@ -39,6 +42,8 @@ enum _TripTab {
     return null;
   }
 }
+
+enum _TripMenuAction { edit, archive, delete }
 
 /// How many tabs the collapsed bar shows before the "more" toggle. The rest
 /// live in the expandable overflow panel.
@@ -79,10 +84,19 @@ class _TripDashboardScreenState extends ConsumerState<TripDashboardScreen> {
   /// dragged in.
   List<_TripTab?> _visibleSlots = List.of(_defaultVisibleTabs);
 
+  /// Loaded from the local trips cache — `null` until it's read (or if this
+  /// trip id isn't in it, e.g. a still-[Trip.isPending] trip navigated to
+  /// before it had a server id). Backs the app bar title and the edit/
+  /// archive/delete menu; the Days/Places/etc. tabs below don't need it.
+  Trip? _trip;
+
+  int? get _tripId => int.tryParse(widget.tripId);
+
   @override
   void initState() {
     super.initState();
     _loadLayout();
+    _loadTrip();
   }
 
   Future<void> _loadLayout() async {
@@ -94,6 +108,89 @@ class _TripDashboardScreenState extends ConsumerState<TripDashboardScreen> {
         (i) => i < stored.length ? _TripTab.fromKey(stored[i]) : null,
       );
     });
+  }
+
+  Future<void> _loadTrip() async {
+    final id = _tripId;
+    if (id == null) return;
+    final trips = await ref.read(tripsRepositoryProvider).cachedTrips();
+    if (!mounted) return;
+    for (final trip in trips) {
+      if (trip.id == id) {
+        setState(() => _trip = trip);
+        return;
+      }
+    }
+  }
+
+  Future<void> _toggleArchived() async {
+    final trip = _trip;
+    final id = _tripId;
+    if (trip == null || id == null) return;
+    final archiving = !trip.isArchived;
+    try {
+      final updated = await ref
+          .read(tripsRepositoryProvider)
+          .setArchived(id: id, archived: archiving);
+      if (!mounted) return;
+      setState(() => _trip = updated);
+      AppMessenger.showSuccess(
+        archiving
+            ? '"${updated.title}" archived.'
+            : '"${updated.title}" unarchived.',
+      );
+    } on ApiException catch (e) {
+      AppMessenger.showError(e.message);
+    }
+  }
+
+  Future<void> _confirmDelete() async {
+    final trip = _trip;
+    final id = _tripId;
+    if (trip == null || id == null) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete trip?'),
+        content: Text(
+          'This permanently deletes "${trip.title}" and everything in it. '
+          'This can\'t be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => context.pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => context.pop(true),
+            style: TextButton.styleFrom(
+              foregroundColor: Theme.of(context).colorScheme.error,
+            ),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    try {
+      await ref.read(tripsRepositoryProvider).deleteTrip(id);
+      if (!mounted) return;
+      context.go('/trips');
+      AppMessenger.showSuccess('"${trip.title}" deleted.');
+    } on ApiException catch (e) {
+      AppMessenger.showError(e.message);
+    }
+  }
+
+  Future<void> _openEdit() async {
+    final trip = _trip;
+    if (trip == null) return;
+    final updated = await context.push<Trip>(
+      '/trips/${widget.tripId}/edit',
+      extra: trip,
+    );
+    if (updated != null && mounted) setState(() => _trip = updated);
   }
 
   void _persistLayout() {
@@ -140,8 +237,41 @@ class _TripDashboardScreenState extends ConsumerState<TripDashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final trip = _trip;
     return Scaffold(
-      appBar: AppBar(title: Text('Trip ${widget.tripId}')),
+      appBar: AppBar(
+        title: Text(trip?.title ?? 'Trip ${widget.tripId}'),
+        actions: [
+          if (trip != null)
+            PopupMenuButton<_TripMenuAction>(
+              icon: const Icon(Icons.more_vert),
+              onSelected: (action) {
+                switch (action) {
+                  case _TripMenuAction.edit:
+                    _openEdit();
+                  case _TripMenuAction.archive:
+                    _toggleArchived();
+                  case _TripMenuAction.delete:
+                    _confirmDelete();
+                }
+              },
+              itemBuilder: (context) => [
+                const PopupMenuItem(
+                  value: _TripMenuAction.edit,
+                  child: Text('Edit'),
+                ),
+                PopupMenuItem(
+                  value: _TripMenuAction.archive,
+                  child: Text(trip.isArchived ? 'Unarchive' : 'Archive'),
+                ),
+                const PopupMenuItem(
+                  value: _TripMenuAction.delete,
+                  child: Text('Delete'),
+                ),
+              ],
+            ),
+        ],
+      ),
       body: IndexedStack(
         index: _TripTab.values.indexOf(_selected),
         children: [for (final tab in _TripTab.values) _bodyFor(tab)],

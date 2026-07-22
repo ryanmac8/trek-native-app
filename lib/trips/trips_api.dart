@@ -41,6 +41,48 @@ class TripsApi {
     return Trip.fromJson(response['trip'] as Map<String, dynamic>);
   }
 
+  /// `PUT /api/trips/:id` for the editable metadata fields (title,
+  /// description, dates, currency) — matches the server's `trip_edit`
+  /// permission check, which is separate from `trip_archive`
+  /// ([archiveTrip]). Fields are sent unconditionally (including `null`, to
+  /// clear an optional one) since this always represents a full save of the
+  /// edit form, not a partial patch.
+  Future<Trip> updateTrip({
+    required int id,
+    required String title,
+    String? description,
+    DateTime? startDate,
+    DateTime? endDate,
+    String? currency,
+  }) async {
+    final body = <String, dynamic>{
+      'title': title,
+      'description': description,
+      'start_date': startDate != null ? _dateStr(startDate) : null,
+      'end_date': endDate != null ? _dateStr(endDate) : null,
+      'currency': currency,
+    };
+    final response =
+        await _apiClient.put('/api/trips/$id', body: body)
+            as Map<String, dynamic>;
+    return Trip.fromJson(response['trip'] as Map<String, dynamic>);
+  }
+
+  /// `PUT /api/trips/:id` with only `is_archived` — kept separate from
+  /// [updateTrip] so archiving never requires the `trip_edit` permission,
+  /// only `trip_archive`.
+  Future<Trip> archiveTrip({required int id, required bool archived}) async {
+    final response =
+        await _apiClient.put('/api/trips/$id', body: {'is_archived': archived})
+            as Map<String, dynamic>;
+    return Trip.fromJson(response['trip'] as Map<String, dynamic>);
+  }
+
+  /// `DELETE /api/trips/:id`.
+  Future<void> deleteTrip(int id) async {
+    await _apiClient.delete('/api/trips/$id');
+  }
+
   static String _dateStr(DateTime d) {
     final y = d.year.toString().padLeft(4, '0');
     final m = d.month.toString().padLeft(2, '0');

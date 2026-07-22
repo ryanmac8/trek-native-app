@@ -11,8 +11,10 @@ import '../features/server_setup/server_setup_screen.dart';
 import '../features/settings/networking_settings_screen.dart';
 import '../features/settings/settings_screen.dart';
 import '../features/trips/create_trip_screen.dart';
+import '../features/trips/edit_trip_screen.dart';
 import '../features/trips/trip_dashboard_screen.dart';
 import '../features/trips/trip_list_screen.dart';
+import '../trips/trip.dart';
 import 'app_lock_state.dart';
 import 'sync_status_shell.dart';
 
@@ -105,6 +107,13 @@ GoRouter buildAppRouter({
             path: '/trips/:tripId',
             builder: (context, state) =>
                 TripDashboardScreen(tripId: state.pathParameters['tripId']!),
+            routes: [
+              GoRoute(
+                path: 'edit',
+                builder: (context, state) =>
+                    EditTripScreen(trip: state.extra! as Trip),
+              ),
+            ],
           ),
         ],
       ),

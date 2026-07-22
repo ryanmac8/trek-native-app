@@ -12,6 +12,13 @@ import 'trip.dart';
 abstract class TripsLocalStore {
   Future<List<Trip>> read();
   Future<void> write(List<Trip> trips);
+
+  /// Ids of trips deleted locally ([TripsRepository.deleteTrip]) whose
+  /// `DELETE` call hasn't reached the server yet — retried by the next
+  /// [TripsRepository.refreshTrips] call. Tracked separately from the trip
+  /// list itself since a deleted trip is removed from that list immediately.
+  Future<Set<int>> readPendingDeletes();
+  Future<void> writePendingDeletes(Set<int> ids);
 }
 
 /// Stores the cached trip list as JSON in `shared_preferences`. Like
@@ -22,6 +29,7 @@ class PreferencesTripsLocalStore implements TripsLocalStore {
     : _preferences = preferences ?? SharedPreferencesAsync();
 
   static const _tripsKey = 'trek.trips.cache';
+  static const _pendingDeletesKey = 'trek.trips.pending_deletes';
 
   final SharedPreferencesAsync _preferences;
 
@@ -39,5 +47,18 @@ class PreferencesTripsLocalStore implements TripsLocalStore {
   Future<void> write(List<Trip> trips) async {
     final encoded = jsonEncode(trips.map((t) => t.toCacheJson()).toList());
     await _preferences.setString(_tripsKey, encoded);
+  }
+
+  @override
+  Future<Set<int>> readPendingDeletes() async {
+    final raw = await _preferences.getString(_pendingDeletesKey);
+    if (raw == null) return const {};
+    final decoded = jsonDecode(raw) as List<dynamic>;
+    return decoded.cast<int>().toSet();
+  }
+
+  @override
+  Future<void> writePendingDeletes(Set<int> ids) async {
+    await _preferences.setString(_pendingDeletesKey, jsonEncode(ids.toList()));
   }
 }
