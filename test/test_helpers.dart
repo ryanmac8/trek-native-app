@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:trek/auth/session_token.dart';
 import 'package:trek/auth/token_storage.dart';
 import 'package:trek/config/server_config.dart';
+import 'package:trek/tags/tag.dart';
+import 'package:trek/tags/tags_local_store.dart';
 
 /// Builds a syntactically-valid, unsigned JWT string for tests — Trek's
 /// backend is the only thing that verifies the signature; the client only
@@ -62,4 +64,23 @@ class InMemoryServerConfigStorage implements ServerConfigStorage {
 
   @override
   Future<void> clear() async => _config = null;
+}
+
+/// In-memory [TagsLocalStore] fake — avoids the `shared_preferences`
+/// platform channel in widget/repository tests.
+class InMemoryTagsLocalStore implements TagsLocalStore {
+  InMemoryTagsLocalStore({List<Tag> initial = const []})
+    : _tags = List.of(initial);
+
+  final List<Tag> _tags;
+
+  @override
+  Future<List<Tag>> read() async => List.of(_tags);
+
+  @override
+  Future<void> write(List<Tag> tags) async {
+    _tags
+      ..clear()
+      ..addAll(tags);
+  }
 }
