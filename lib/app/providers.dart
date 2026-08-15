@@ -3,6 +3,9 @@ import 'package:go_router/go_router.dart';
 
 import '../auth/auth_service.dart';
 import '../auth/token_storage.dart';
+import '../budget/budget_api.dart';
+import '../budget/budget_local_store.dart';
+import '../budget/budget_repository.dart';
 import '../config/server_config.dart';
 import '../config/server_config_resolver.dart';
 import '../config/wifi_network_info.dart';
@@ -45,6 +48,39 @@ final authServiceProvider = Provider<AuthService>((ref) {
   return AuthService(
     apiClient: ref.watch(authApiClientProvider),
     tokenStorage: ref.watch(tokenStorageProvider),
+  );
+});
+
+/// Authenticated client for the rest of the API — attaches a bearer token
+/// via [AuthService.currentAccessToken]. A 401 clears the local session via
+/// [AuthService.handleUnauthorized] (there's no refresh flow to retry
+/// against — see its doc comment); a non-blocking "reconnect" UX for that
+/// case is a follow-up, not this feature's job.
+final apiClientProvider = Provider<ApiClient>((ref) {
+  final authService = ref.watch(authServiceProvider);
+  return ApiClient(
+    getBaseUrl: ref.watch(serverConfigResolverProvider).resolveBaseUrl,
+    getAccessToken: () => authService.currentAccessToken,
+    onUnauthorized: authService.handleUnauthorized,
+  );
+});
+
+final budgetApiProvider = Provider<BudgetApi>((ref) {
+  return BudgetApi(apiClient: ref.watch(apiClientProvider));
+});
+
+/// Local (non-secure) cache of each trip's budget items — see
+/// docs/offline-first.md. A minimal, scoped-to-budget stand-in for the full
+/// local-persistence mechanism issue #21 will decide on for the whole data
+/// model.
+final budgetLocalStoreProvider = Provider<BudgetLocalStore>(
+  (ref) => PreferencesBudgetLocalStore(),
+);
+
+final budgetRepositoryProvider = Provider<BudgetRepository>((ref) {
+  return BudgetRepository(
+    budgetApi: ref.watch(budgetApiProvider),
+    localStore: ref.watch(budgetLocalStoreProvider),
   );
 });
 

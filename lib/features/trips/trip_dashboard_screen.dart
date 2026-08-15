@@ -1,11 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../app/app_messenger.dart';
+import '../../app/providers.dart';
+import '../../budget/budget_item.dart';
 import '../../design/app_spacing.dart';
 import '../../design/place_category_colors.dart';
+import '../../design/widgets/app_list_row.dart';
+import '../../design/widgets/empty_state.dart';
+import '../../design/widgets/skeleton_box.dart';
+import '../../network/api_exception.dart';
 
 /// Per-trip shell: a bottom tab bar switching between the day/place/budget/
-/// packing/todo sections the issue #2 nav structure calls for. Every tab
-/// is a placeholder — none of those data models exist yet (issues #4–#9).
+/// packing/todo sections the issue #2 nav structure calls for. Budget
+/// (issue #7) reads real data; the rest are still placeholders — none of
+/// those data models exist yet (issues #4–#6, #8–#9).
 class TripDashboardScreen extends StatefulWidget {
   const TripDashboardScreen({super.key, required this.tripId});
 
@@ -17,6 +26,7 @@ class TripDashboardScreen extends StatefulWidget {
 
 class _TripDashboardScreenState extends State<TripDashboardScreen> {
   int _tabIndex = 0;
+  final _budgetTabKey = GlobalKey<_BudgetTabState>();
 
   static const _tabs = [
     (label: 'Days', icon: Icons.calendar_today),
@@ -35,11 +45,18 @@ class _TripDashboardScreenState extends State<TripDashboardScreen> {
         children: [
           const _ComingSoonTab(label: 'Days'),
           const _PlacesPreviewTab(),
-          const _ComingSoonTab(label: 'Budget'),
+          _BudgetTab(key: _budgetTabKey, tripId: widget.tripId),
           const _ComingSoonTab(label: 'Packing'),
           const _ComingSoonTab(label: 'Todos'),
         ],
       ),
+      floatingActionButton: _tabIndex == 2
+          ? FloatingActionButton(
+              onPressed: () => _budgetTabKey.currentState?.createItem(),
+              tooltip: 'New budget item',
+              child: const Icon(Icons.add),
+            )
+          : null,
       bottomNavigationBar: NavigationBar(
         selectedIndex: _tabIndex,
         onDestinationSelected: (index) => setState(() => _tabIndex = index),
@@ -100,6 +117,275 @@ class _PlacesPreviewTab extends StatelessWidget {
                 label: Text(category.label),
               ),
           ],
+        ),
+      ],
+    );
+  }
+}
+
+/// The Budget tab: per docs/offline-first.md, the local cache
+/// ([BudgetRepository.cachedItems]) is the source of truth for what's
+/// shown — this paints from it immediately, then refreshes from the
+/// network in the background. The FAB (owned by [TripDashboardScreen], via
+/// [createItem]) opens a dialog for the item's name, category, and total
+/// price, then creates it optimistically — an item created while offline
+/// stays queued and syncs on the next refresh, the same shape as
+/// `TagsRepository.createTag`. This first slice of issue #7 doesn't cover
+/// per-person splits, payers, or settlements yet.
+class _BudgetTab extends ConsumerStatefulWidget {
+  const _BudgetTab({super.key, required this.tripId});
+
+  final String tripId;
+
+  @override
+  ConsumerState<_BudgetTab> createState() => _BudgetTabState();
+}
+
+class _BudgetTabState extends ConsumerState<_BudgetTab> {
+  List<BudgetItem>? _items;
+  Object? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final repository = ref.read(budgetRepositoryProvider);
+    final cached = await repository.cachedItems(widget.tripId);
+    if (!mounted) return;
+    setState(() {
+      _items = cached;
+      _error = null;
+    });
+    await _refresh();
+  }
+
+  Future<void> _refresh() async {
+    final repository = ref.read(budgetRepositoryProvider);
+    try {
+      final refreshed = await repository.refreshItems(widget.tripId);
+      if (!mounted) return;
+      setState(() {
+        _items = refreshed;
+        _error = null;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        // Only surface an error state when there's nothing cached to show.
+        if (_items == null || _items!.isEmpty) _error = e;
+      });
+    }
+  }
+
+  Future<void> createItem() async {
+    final result = await showDialog<_NewBudgetItem>(
+      context: context,
+      builder: (context) => const _CreateBudgetItemDialog(),
+    );
+    if (result == null) return;
+
+    try {
+      final item = await ref
+          .read(budgetRepositoryProvider)
+          .createItem(
+            widget.tripId,
+            name: result.name,
+            category: result.category,
+            totalPrice: result.totalPrice,
+          );
+      if (!mounted) return;
+      setState(() => _items = [...?_items, item]);
+      AppMessenger.showSuccess(
+        item.isPending
+            ? '"${item.name}" saved — will sync once you\'re back online.'
+            : '"${item.name}" added.',
+      );
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      AppMessenger.showError(e.message);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final items = _items;
+
+    if (items == null) {
+      return ListView(
+        padding: const EdgeInsets.all(AppSpacing.md),
+        children: const [
+          SkeletonListTile(),
+          SkeletonListTile(),
+          SkeletonListTile(),
+        ],
+      );
+    }
+
+    if (items.isEmpty) {
+      final error = _error;
+      if (error is NetworkException) {
+        return EmptyState(
+          icon: Icons.cloud_off,
+          message:
+              "You're offline. Budget items will load once you're "
+              'back online.',
+          action: FilledButton(onPressed: _refresh, child: const Text('Retry')),
+        );
+      }
+      if (error != null) {
+        return EmptyState(
+          icon: Icons.error_outline,
+          message: "Couldn't load budget items.",
+          action: FilledButton(onPressed: _refresh, child: const Text('Retry')),
+        );
+      }
+      return const EmptyState(
+        icon: Icons.attach_money,
+        message: 'No budget items yet.',
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: _refresh,
+      child: ListView.builder(
+        padding: const EdgeInsets.all(AppSpacing.md),
+        itemCount: items.length,
+        itemBuilder: (context, index) {
+          final item = items[index];
+          return AppListRow(
+            title: item.name,
+            subtitle: _subtitle(item),
+            trailing: item.isPending
+                ? const Icon(Icons.sync)
+                : _priceLabel(item) != null
+                ? Text(_priceLabel(item)!)
+                : null,
+          );
+        },
+      ),
+    );
+  }
+
+  String? _subtitle(BudgetItem item) {
+    if (item.isPending) return 'Syncing…';
+    final category = item.category;
+    final note = item.note;
+    if (category != null && note != null && note.isNotEmpty) {
+      return '$category · $note';
+    }
+    return category ?? (note != null && note.isNotEmpty ? note : null);
+  }
+
+  String? _priceLabel(BudgetItem item) {
+    final price = item.totalPrice;
+    if (price == null) return null;
+    final formatted = price == price.roundToDouble()
+        ? price.toStringAsFixed(0)
+        : price.toStringAsFixed(2);
+    final currency = item.currency;
+    return currency != null ? '$currency $formatted' : formatted;
+  }
+}
+
+class _NewBudgetItem {
+  const _NewBudgetItem({required this.name, this.category, this.totalPrice});
+
+  final String name;
+  final String? category;
+  final double? totalPrice;
+}
+
+class _CreateBudgetItemDialog extends StatefulWidget {
+  const _CreateBudgetItemDialog();
+
+  @override
+  State<_CreateBudgetItemDialog> createState() =>
+      _CreateBudgetItemDialogState();
+}
+
+class _CreateBudgetItemDialogState extends State<_CreateBudgetItemDialog> {
+  final _formKey = GlobalKey<FormState>();
+  final _nameController = TextEditingController();
+  final _categoryController = TextEditingController();
+  final _priceController = TextEditingController();
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _categoryController.dispose();
+    _priceController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('New budget item'),
+      content: Form(
+        key: _formKey,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextFormField(
+              controller: _nameController,
+              autofocus: true,
+              decoration: const InputDecoration(labelText: 'Name'),
+              validator: (value) {
+                if (value == null || value.trim().isEmpty) {
+                  return 'A name is required.';
+                }
+                return null;
+              },
+            ),
+            const SizedBox(height: AppSpacing.md),
+            TextFormField(
+              controller: _categoryController,
+              decoration: const InputDecoration(
+                labelText: 'Category (optional)',
+              ),
+            ),
+            const SizedBox(height: AppSpacing.md),
+            TextFormField(
+              controller: _priceController,
+              decoration: const InputDecoration(
+                labelText: 'Total price (optional)',
+              ),
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              validator: (value) {
+                if (value == null || value.trim().isEmpty) return null;
+                return double.tryParse(value.trim()) == null
+                    ? 'Enter a valid number.'
+                    : null;
+              },
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () {
+            if (!(_formKey.currentState?.validate() ?? false)) return;
+            final category = _categoryController.text.trim();
+            final price = _priceController.text.trim();
+            Navigator.of(context).pop(
+              _NewBudgetItem(
+                name: _nameController.text.trim(),
+                category: category.isEmpty ? null : category,
+                totalPrice: price.isEmpty ? null : double.parse(price),
+              ),
+            );
+          },
+          child: const Text('Create'),
         ),
       ],
     );

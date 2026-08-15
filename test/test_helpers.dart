@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:trek/auth/session_token.dart';
 import 'package:trek/auth/token_storage.dart';
+import 'package:trek/budget/budget_item.dart';
+import 'package:trek/budget/budget_local_store.dart';
 import 'package:trek/config/server_config.dart';
 
 /// Builds a syntactically-valid, unsigned JWT string for tests — Trek's
@@ -62,4 +64,24 @@ class InMemoryServerConfigStorage implements ServerConfigStorage {
 
   @override
   Future<void> clear() async => _config = null;
+}
+
+/// In-memory [BudgetLocalStore] fake — avoids the `shared_preferences`
+/// platform channel in widget/repository tests. Keyed per trip id, like the
+/// real store.
+class InMemoryBudgetLocalStore implements BudgetLocalStore {
+  InMemoryBudgetLocalStore({Map<String, List<BudgetItem>> initial = const {}})
+    : _itemsByTripId = {
+        for (final entry in initial.entries) entry.key: List.of(entry.value),
+      };
+
+  final Map<String, List<BudgetItem>> _itemsByTripId;
+
+  @override
+  Future<List<BudgetItem>> read(String tripId) async =>
+      List.of(_itemsByTripId[tripId] ?? const []);
+
+  @override
+  Future<void> write(String tripId, List<BudgetItem> items) async =>
+      _itemsByTripId[tripId] = List.of(items);
 }
