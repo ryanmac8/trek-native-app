@@ -1,11 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../app/app_messenger.dart';
+import '../../app/providers.dart';
 import '../../design/app_spacing.dart';
 import '../../design/place_category_colors.dart';
+import '../../design/widgets/app_list_row.dart';
+import '../../design/widgets/empty_state.dart';
+import '../../design/widgets/skeleton_box.dart';
+import '../../network/api_exception.dart';
+import '../../packing/packing_item.dart';
 
 /// Per-trip shell: a bottom tab bar switching between the day/place/budget/
-/// packing/todo sections the issue #2 nav structure calls for. Every tab
-/// is a placeholder — none of those data models exist yet (issues #4–#9).
+/// packing/todo sections the issue #2 nav structure calls for. Packing
+/// (issue #8) reads real data; the rest are still placeholders — none of
+/// those data models exist yet (issues #4–#7, #9).
 class TripDashboardScreen extends StatefulWidget {
   const TripDashboardScreen({super.key, required this.tripId});
 
@@ -17,6 +26,7 @@ class TripDashboardScreen extends StatefulWidget {
 
 class _TripDashboardScreenState extends State<TripDashboardScreen> {
   int _tabIndex = 0;
+  final _packingTabKey = GlobalKey<_PackingTabState>();
 
   static const _tabs = [
     (label: 'Days', icon: Icons.calendar_today),
@@ -36,10 +46,17 @@ class _TripDashboardScreenState extends State<TripDashboardScreen> {
           const _ComingSoonTab(label: 'Days'),
           const _PlacesPreviewTab(),
           const _ComingSoonTab(label: 'Budget'),
-          const _ComingSoonTab(label: 'Packing'),
+          _PackingTab(key: _packingTabKey, tripId: widget.tripId),
           const _ComingSoonTab(label: 'Todos'),
         ],
       ),
+      floatingActionButton: _tabIndex == 3
+          ? FloatingActionButton(
+              onPressed: () => _packingTabKey.currentState?.createItem(),
+              tooltip: 'New packing item',
+              child: const Icon(Icons.add),
+            )
+          : null,
       bottomNavigationBar: NavigationBar(
         selectedIndex: _tabIndex,
         onDestinationSelected: (index) => setState(() => _tabIndex = index),
@@ -100,6 +117,235 @@ class _PlacesPreviewTab extends StatelessWidget {
                 label: Text(category.label),
               ),
           ],
+        ),
+      ],
+    );
+  }
+}
+
+/// The Packing tab: per docs/offline-first.md, the local cache
+/// ([PackingRepository.cachedItems]) is the source of truth for what's
+/// shown — this paints from it immediately, then refreshes from the
+/// network in the background. The FAB (owned by [TripDashboardScreen], via
+/// [createItem]) opens a dialog for the item's name and category, then
+/// creates it optimistically — an item created while offline stays queued
+/// and syncs on the next refresh, the same shape as
+/// `BudgetRepository.createItem`. This first slice of issue #8 doesn't
+/// cover checking items off, bags, sharing, or templates yet.
+class _PackingTab extends ConsumerStatefulWidget {
+  const _PackingTab({super.key, required this.tripId});
+
+  final String tripId;
+
+  @override
+  ConsumerState<_PackingTab> createState() => _PackingTabState();
+}
+
+class _PackingTabState extends ConsumerState<_PackingTab> {
+  List<PackingItem>? _items;
+  Object? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final repository = ref.read(packingRepositoryProvider);
+    final cached = await repository.cachedItems(widget.tripId);
+    if (!mounted) return;
+    setState(() {
+      _items = cached;
+      _error = null;
+    });
+    await _refresh();
+  }
+
+  Future<void> _refresh() async {
+    final repository = ref.read(packingRepositoryProvider);
+    try {
+      final refreshed = await repository.refreshItems(widget.tripId);
+      if (!mounted) return;
+      setState(() {
+        _items = refreshed;
+        _error = null;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        // Only surface an error state when there's nothing cached to show.
+        if (_items == null || _items!.isEmpty) _error = e;
+      });
+    }
+  }
+
+  Future<void> createItem() async {
+    final result = await showDialog<_NewPackingItem>(
+      context: context,
+      builder: (context) => const _CreatePackingItemDialog(),
+    );
+    if (result == null) return;
+
+    try {
+      final item = await ref
+          .read(packingRepositoryProvider)
+          .createItem(
+            widget.tripId,
+            name: result.name,
+            category: result.category,
+          );
+      if (!mounted) return;
+      setState(() => _items = [...?_items, item]);
+      AppMessenger.showSuccess(
+        item.isPending
+            ? '"${item.name}" saved — will sync once you\'re back online.'
+            : '"${item.name}" added.',
+      );
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      AppMessenger.showError(e.message);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final items = _items;
+
+    if (items == null) {
+      return ListView(
+        padding: const EdgeInsets.all(AppSpacing.md),
+        children: const [
+          SkeletonListTile(),
+          SkeletonListTile(),
+          SkeletonListTile(),
+        ],
+      );
+    }
+
+    if (items.isEmpty) {
+      final error = _error;
+      if (error is NetworkException) {
+        return EmptyState(
+          icon: Icons.cloud_off,
+          message:
+              "You're offline. Packing items will load once you're "
+              'back online.',
+          action: FilledButton(onPressed: _refresh, child: const Text('Retry')),
+        );
+      }
+      if (error != null) {
+        return EmptyState(
+          icon: Icons.error_outline,
+          message: "Couldn't load packing items.",
+          action: FilledButton(onPressed: _refresh, child: const Text('Retry')),
+        );
+      }
+      return const EmptyState(
+        icon: Icons.checklist,
+        message: 'No packing items yet.',
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: _refresh,
+      child: ListView.builder(
+        padding: const EdgeInsets.all(AppSpacing.md),
+        itemCount: items.length,
+        itemBuilder: (context, index) {
+          final item = items[index];
+          return AppListRow(
+            title: item.name,
+            subtitle: item.isPending ? 'Syncing…' : item.category,
+            trailing: Icon(
+              item.isPending
+                  ? Icons.sync
+                  : item.checked
+                  ? Icons.check_circle
+                  : Icons.radio_button_unchecked,
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _NewPackingItem {
+  const _NewPackingItem({required this.name, this.category});
+
+  final String name;
+  final String? category;
+}
+
+class _CreatePackingItemDialog extends StatefulWidget {
+  const _CreatePackingItemDialog();
+
+  @override
+  State<_CreatePackingItemDialog> createState() =>
+      _CreatePackingItemDialogState();
+}
+
+class _CreatePackingItemDialogState extends State<_CreatePackingItemDialog> {
+  final _formKey = GlobalKey<FormState>();
+  final _nameController = TextEditingController();
+  final _categoryController = TextEditingController();
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _categoryController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('New packing item'),
+      content: Form(
+        key: _formKey,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextFormField(
+              controller: _nameController,
+              autofocus: true,
+              decoration: const InputDecoration(labelText: 'Name'),
+              validator: (value) {
+                if (value == null || value.trim().isEmpty) {
+                  return 'A name is required.';
+                }
+                return null;
+              },
+            ),
+            const SizedBox(height: AppSpacing.md),
+            TextFormField(
+              controller: _categoryController,
+              decoration: const InputDecoration(
+                labelText: 'Category (optional)',
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () {
+            if (!(_formKey.currentState?.validate() ?? false)) return;
+            final category = _categoryController.text.trim();
+            Navigator.of(context).pop(
+              _NewPackingItem(
+                name: _nameController.text.trim(),
+                category: category.isEmpty ? null : category,
+              ),
+            );
+          },
+          child: const Text('Create'),
         ),
       ],
     );
