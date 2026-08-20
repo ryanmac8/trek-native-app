@@ -25,6 +25,7 @@ class TodoItem {
     required this.name,
     this.category,
     this.checked = false,
+    this.pendingChecked = false,
   });
 
   final int? id;
@@ -34,10 +35,30 @@ class TodoItem {
   final String? category;
   final bool checked;
 
+  /// True when [checked] was flipped locally (via [TodoRepository.toggleChecked])
+  /// but hasn't been confirmed by the server yet — either still queued
+  /// (offline) or the update request is in flight. Cache-only bookkeeping,
+  /// like [localId]; never sent to or read from the API.
+  final bool pendingChecked;
+
   /// True for an item created locally that hasn't been confirmed by the
   /// server yet — either still queued (offline) or its create request is in
   /// flight. See [TodoRepository.createItem].
   bool get isPending => id == null;
+
+  /// A copy with [checked] (and its sync state) replaced — the only fields
+  /// [TodoRepository.toggleChecked] ever needs to change.
+  TodoItem copyWithChecked(bool checked, {bool pendingChecked = false}) {
+    return TodoItem(
+      id: id,
+      localId: localId,
+      tripId: tripId,
+      name: name,
+      category: category,
+      checked: checked,
+      pendingChecked: pendingChecked,
+    );
+  }
 
   factory TodoItem.fromJson(
     Map<String, dynamic> json, {
@@ -71,6 +92,7 @@ class TodoItem {
     'name': name,
     'category': category,
     'checked': checked,
+    'pending_checked': pendingChecked,
   };
 
   factory TodoItem.fromCacheJson(Map<String, dynamic> json) {
@@ -81,6 +103,7 @@ class TodoItem {
       name: json['name'] as String,
       category: json['category'] as String?,
       checked: json['checked'] as bool? ?? false,
+      pendingChecked: json['pending_checked'] as bool? ?? false,
     );
   }
 }

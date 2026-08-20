@@ -129,9 +129,11 @@ class _PlacesPreviewTab extends StatelessWidget {
 /// background. The FAB (owned by [TripDashboardScreen], via [createItem])
 /// opens a dialog for the item's name and category, then creates it
 /// optimistically — an item created while offline stays queued and syncs on
-/// the next refresh, the same shape as `PackingRepository.createItem`. This
-/// first slice of issue #9 doesn't cover checking items off, delete/reorder,
-/// due dates, description, assignment, or priority yet.
+/// the next refresh, the same shape as `PackingRepository.createItem`.
+/// Tapping a synced row toggles it checked/unchecked the same way
+/// ([TodoRepository.toggleChecked]); a still-pending (unsynced) row isn't
+/// tappable. Delete/reorder, due dates, description, assignment, and
+/// priority remain unbuilt for issue #9.
 class _TodosTab extends ConsumerStatefulWidget {
   const _TodosTab({super.key, required this.tripId});
 
@@ -177,6 +179,24 @@ class _TodosTabState extends ConsumerState<_TodosTab> {
         // Only surface an error state when there's nothing cached to show.
         if (_items == null || _items!.isEmpty) _error = e;
       });
+    }
+  }
+
+  Future<void> _toggleChecked(TodoItem item) async {
+    try {
+      final updated = await ref
+          .read(todoRepositoryProvider)
+          .toggleChecked(widget.tripId, item);
+      if (!mounted) return;
+      setState(() {
+        _items = [
+          for (final existing in _items ?? const <TodoItem>[])
+            if (existing.localId == item.localId) updated else existing,
+        ];
+      });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      AppMessenger.showError(e.message);
     }
   }
 
@@ -259,6 +279,7 @@ class _TodosTabState extends ConsumerState<_TodosTab> {
                   ? Icons.check_circle
                   : Icons.radio_button_unchecked,
             ),
+            onTap: item.isPending ? null : () => _toggleChecked(item),
           );
         },
       ),

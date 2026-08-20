@@ -68,6 +68,7 @@ void main() {
         name: 'Book campsite',
         category: 'Logistics',
         checked: true,
+        pendingChecked: true,
       );
 
       final restored = TodoItem.fromCacheJson(item.toCacheJson());
@@ -78,6 +79,7 @@ void main() {
       expect(restored.name, item.name);
       expect(restored.category, item.category);
       expect(restored.checked, item.checked);
+      expect(restored.pendingChecked, item.pendingChecked);
     });
 
     test('a still-pending item round-trips with a null id', () {
@@ -87,6 +89,62 @@ void main() {
 
       expect(restored.id, isNull);
       expect(restored.isPending, isTrue);
+    });
+
+    test(
+      'pendingChecked defaults to false when absent from older cache data',
+      () {
+        const item = TodoItem(
+          id: 5,
+          localId: 'server-5',
+          tripId: '20',
+          name: 'Book campsite',
+        );
+        final withoutKey = item.toCacheJson()..remove('pending_checked');
+
+        final restored = TodoItem.fromCacheJson(withoutKey);
+
+        expect(restored.pendingChecked, isFalse);
+      },
+    );
+  });
+
+  group('copyWithChecked', () {
+    test(
+      'replaces checked and pendingChecked, leaving other fields intact',
+      () {
+        const item = TodoItem(
+          id: 5,
+          localId: 'server-5',
+          tripId: '20',
+          name: 'Book campsite',
+          category: 'Logistics',
+          checked: false,
+        );
+
+        final toggled = item.copyWithChecked(true, pendingChecked: true);
+
+        expect(toggled.checked, isTrue);
+        expect(toggled.pendingChecked, isTrue);
+        expect(toggled.id, item.id);
+        expect(toggled.localId, item.localId);
+        expect(toggled.name, item.name);
+        expect(toggled.category, item.category);
+      },
+    );
+
+    test('pendingChecked defaults to false', () {
+      const item = TodoItem(
+        id: 5,
+        localId: 'server-5',
+        tripId: '20',
+        name: 'Book campsite',
+        pendingChecked: true,
+      );
+
+      final toggled = item.copyWithChecked(false);
+
+      expect(toggled.pendingChecked, isFalse);
     });
   });
 }

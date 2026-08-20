@@ -233,6 +233,109 @@ void main() {
       },
     );
 
+    testWidgets('tapping a synced todo toggles its checked state', (
+      tester,
+    ) async {
+      await _pumpDashboard(
+        tester,
+        todoHttpClient: MockClient((request) async {
+          if (request.method == 'PUT') {
+            return _json({
+              'item': {
+                'id': 1,
+                'trip_id': 'trip-1',
+                'name': 'Book campsite',
+                'checked': 1,
+              },
+            });
+          }
+          return _json({
+            'items': [
+              {
+                'id': 1,
+                'trip_id': 'trip-1',
+                'name': 'Book campsite',
+                'checked': 0,
+              },
+            ],
+          });
+        }),
+      );
+      await tester.tap(find.text('Todos'));
+      await tester.pumpAndSettle();
+      expect(find.byIcon(Icons.radio_button_unchecked), findsOneWidget);
+
+      await tester.tap(find.text('Book campsite'));
+      await tester.pumpAndSettle();
+
+      expect(find.byIcon(Icons.check_circle), findsOneWidget);
+      expect(find.byIcon(Icons.radio_button_unchecked), findsNothing);
+    });
+
+    testWidgets(
+      'toggling while offline keeps the checked state and does not error',
+      (tester) async {
+        await _pumpDashboard(
+          tester,
+          todoHttpClient: MockClient((request) async {
+            if (request.method == 'PUT') {
+              throw http.ClientException('Connection refused');
+            }
+            return _json({
+              'items': [
+                {
+                  'id': 1,
+                  'trip_id': 'trip-1',
+                  'name': 'Book campsite',
+                  'checked': 0,
+                },
+              ],
+            });
+          }),
+        );
+        await tester.tap(find.text('Todos'));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('Book campsite'));
+        await tester.pumpAndSettle();
+
+        expect(find.byIcon(Icons.check_circle), findsOneWidget);
+      },
+    );
+
+    testWidgets('a still-pending (unsynced) todo is not tappable', (
+      tester,
+    ) async {
+      await _pumpDashboard(
+        tester,
+        todoHttpClient: MockClient((request) async {
+          if (request.method == 'PUT') {
+            fail('should not attempt to toggle a not-yet-synced item');
+          }
+          return _json({'items': []});
+        }),
+        localStore: InMemoryTodoLocalStore(
+          initial: {
+            'trip-1': [
+              const TodoItem(
+                localId: 'local-1',
+                tripId: 'trip-1',
+                name: 'Draft item',
+              ),
+            ],
+          },
+        ),
+      );
+      await tester.tap(find.text('Todos'));
+      await tester.pumpAndSettle();
+      expect(find.byIcon(Icons.sync), findsOneWidget);
+
+      await tester.tap(find.text('Draft item'));
+      await tester.pumpAndSettle();
+
+      expect(find.byIcon(Icons.sync), findsOneWidget);
+    });
+
     testWidgets('a blank name is rejected before hitting the network', (
       tester,
     ) async {

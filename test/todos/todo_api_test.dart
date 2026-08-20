@@ -134,4 +134,43 @@ void main() {
       );
     });
   });
+
+  group('updateChecked', () {
+    test('PUTs only checked and parses the updated item', () async {
+      Uri? requestedUri;
+      Map<String, dynamic>? sentBody;
+      final api = _api(
+        MockClient((request) async {
+          requestedUri = request.url;
+          sentBody = jsonDecode(request.body) as Map<String, dynamic>;
+          return _json({
+            'item': {
+              'id': 7,
+              'trip_id': 20,
+              'name': 'Book campsite',
+              'checked': 1,
+            },
+          });
+        }),
+      );
+
+      final item = await api.updateChecked('20', id: 7, checked: true);
+
+      expect(requestedUri?.path, '/api/trips/20/todo/7');
+      expect(sentBody, {'checked': true});
+      expect(item.id, 7);
+      expect(item.checked, isTrue);
+    });
+
+    test('a missing item surfaces the server\'s 404 message', () async {
+      final api = _api(
+        MockClient((request) async => _json({'error': 'Item not found'}, 404)),
+      );
+
+      expect(
+        api.updateChecked('20', id: 999, checked: true),
+        throwsA(isA<ApiException>()),
+      );
+    });
+  });
 }

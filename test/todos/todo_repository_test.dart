@@ -193,6 +193,92 @@ void main() {
     );
 
     test(
+      'retries a pending offline toggle and keeps its confirmed value',
+      () async {
+        final localStore = InMemoryTodoLocalStore(
+          initial: {
+            '20': [
+              const TodoItem(
+                id: 7,
+                localId: 'server-7',
+                tripId: '20',
+                name: 'Book campsite',
+                checked: true,
+                pendingChecked: true,
+              ),
+            ],
+          },
+        );
+        var putCalls = 0;
+        final repository = _repository(
+          httpClient: MockClient((request) async {
+            if (request.method == 'PUT') {
+              putCalls++;
+              return _json({
+                'item': {
+                  'id': 7,
+                  'trip_id': 20,
+                  'name': 'Book campsite',
+                  'checked': 1,
+                },
+              });
+            }
+            return _json({
+              'items': [
+                {'id': 7, 'trip_id': 20, 'name': 'Book campsite', 'checked': 1},
+              ],
+            });
+          }),
+          localStore: localStore,
+        );
+
+        final items = await repository.refreshItems('20');
+
+        expect(putCalls, 1);
+        expect(items.single.checked, isTrue);
+        expect(items.single.pendingChecked, isFalse);
+      },
+    );
+
+    test(
+      'a still-offline toggle stays queued and overrides the stale server value',
+      () async {
+        final localStore = InMemoryTodoLocalStore(
+          initial: {
+            '20': [
+              const TodoItem(
+                id: 7,
+                localId: 'server-7',
+                tripId: '20',
+                name: 'Book campsite',
+                checked: true,
+                pendingChecked: true,
+              ),
+            ],
+          },
+        );
+        final repository = _repository(
+          httpClient: MockClient((request) async {
+            if (request.method == 'PUT') {
+              throw http.ClientException('Connection refused');
+            }
+            return _json({
+              'items': [
+                {'id': 7, 'trip_id': 20, 'name': 'Book campsite', 'checked': 0},
+              ],
+            });
+          }),
+          localStore: localStore,
+        );
+
+        final items = await repository.refreshItems('20');
+
+        expect(items.single.checked, isTrue);
+        expect(items.single.pendingChecked, isTrue);
+      },
+    );
+
+    test(
       'caches for different trips stay independent through a refresh',
       () async {
         final localStore = InMemoryTodoLocalStore(
@@ -284,6 +370,99 @@ void main() {
           throwsA(isA<ValidationException>()),
         );
         expect(await localStore.read('20'), isEmpty);
+      },
+    );
+  });
+
+  group('toggleChecked', () {
+    const item = TodoItem(
+      id: 7,
+      localId: 'server-7',
+      tripId: '20',
+      name: 'Book campsite',
+      checked: false,
+    );
+
+    test(
+      'flips the cache immediately, then reconciles with the server value',
+      () async {
+        final localStore = InMemoryTodoLocalStore(
+          initial: {
+            '20': [item],
+          },
+        );
+        Map<String, dynamic>? sentBody;
+        final repository = _repository(
+          httpClient: MockClient((request) async {
+            sentBody = jsonDecode(request.body) as Map<String, dynamic>;
+            return _json({
+              'item': {
+                'id': 7,
+                'trip_id': 20,
+                'name': 'Book campsite',
+                'checked': 1,
+              },
+            });
+          }),
+          localStore: localStore,
+        );
+
+        final updated = await repository.toggleChecked('20', item);
+
+        expect(sentBody, {'checked': true});
+        expect(updated.checked, isTrue);
+        expect(updated.pendingChecked, isFalse);
+        final cached = await localStore.read('20');
+        expect(cached.single.checked, isTrue);
+        expect(cached.single.pendingChecked, isFalse);
+      },
+    );
+
+    test('stays queued as a pending toggle in the cache when offline, instead '
+        'of failing or blocking', () async {
+      final localStore = InMemoryTodoLocalStore(
+        initial: {
+          '20': [item],
+        },
+      );
+      final repository = _repository(
+        httpClient: MockClient((request) async {
+          throw http.ClientException('Connection refused');
+        }),
+        localStore: localStore,
+      );
+
+      final updated = await repository.toggleChecked('20', item);
+
+      expect(updated.checked, isTrue);
+      expect(updated.pendingChecked, isTrue);
+      final cached = await localStore.read('20');
+      expect(cached.single.checked, isTrue);
+      expect(cached.single.pendingChecked, isTrue);
+    });
+
+    test(
+      'rolls back the optimistic flip when the server rejects the request',
+      () async {
+        final localStore = InMemoryTodoLocalStore(
+          initial: {
+            '20': [item],
+          },
+        );
+        final repository = _repository(
+          httpClient: MockClient(
+            (request) async => _json({'error': 'Item not found'}, 404),
+          ),
+          localStore: localStore,
+        );
+
+        await expectLater(
+          repository.toggleChecked('20', item),
+          throwsA(isA<ApiException>()),
+        );
+        final cached = await localStore.read('20');
+        expect(cached.single.checked, isFalse);
+        expect(cached.single.pendingChecked, isFalse);
       },
     );
   });
