@@ -107,6 +107,37 @@ void main() {
         expect(restored.pendingChecked, isFalse);
       },
     );
+
+    test(
+      'pendingDelete defaults to false when absent from older cache data',
+      () {
+        const item = TodoItem(
+          id: 5,
+          localId: 'server-5',
+          tripId: '20',
+          name: 'Book campsite',
+        );
+        final withoutKey = item.toCacheJson()..remove('pending_delete');
+
+        final restored = TodoItem.fromCacheJson(withoutKey);
+
+        expect(restored.pendingDelete, isFalse);
+      },
+    );
+
+    test('a pending-delete item round-trips with the flag set', () {
+      const item = TodoItem(
+        id: 5,
+        localId: 'server-5',
+        tripId: '20',
+        name: 'Book campsite',
+        pendingDelete: true,
+      );
+
+      final restored = TodoItem.fromCacheJson(item.toCacheJson());
+
+      expect(restored.pendingDelete, isTrue);
+    });
   });
 
   group('copyWithChecked', () {
@@ -145,6 +176,28 @@ void main() {
       final toggled = item.copyWithChecked(false);
 
       expect(toggled.pendingChecked, isFalse);
+    });
+  });
+
+  group('copyWithPendingDelete', () {
+    test('replaces pendingDelete, leaving other fields intact', () {
+      const item = TodoItem(
+        id: 5,
+        localId: 'server-5',
+        tripId: '20',
+        name: 'Book campsite',
+        category: 'Logistics',
+        checked: true,
+      );
+
+      final deleted = item.copyWithPendingDelete(true);
+
+      expect(deleted.pendingDelete, isTrue);
+      expect(deleted.id, item.id);
+      expect(deleted.localId, item.localId);
+      expect(deleted.name, item.name);
+      expect(deleted.category, item.category);
+      expect(deleted.checked, item.checked);
     });
   });
 }

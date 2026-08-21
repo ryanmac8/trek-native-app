@@ -358,5 +358,92 @@ void main() {
 
       expect(find.text('A name is required.'), findsOneWidget);
     });
+
+    testWidgets('swiping a synced todo away deletes it once confirmed', (
+      tester,
+    ) async {
+      var deleteCalls = 0;
+      await _pumpDashboard(
+        tester,
+        todoHttpClient: MockClient((request) async {
+          if (request.method == 'DELETE') {
+            deleteCalls++;
+            return _json({'success': true});
+          }
+          return _json({
+            'items': [
+              {'id': 1, 'trip_id': 'trip-1', 'name': 'Book campsite'},
+            ],
+          });
+        }),
+      );
+      await tester.tap(find.text('Todos'));
+      await tester.pumpAndSettle();
+
+      await tester.drag(find.text('Book campsite'), const Offset(-500, 0));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Delete'));
+      await tester.pumpAndSettle();
+
+      expect(deleteCalls, 1);
+      expect(find.text('Book campsite'), findsNothing);
+      expect(find.text('No todos yet.'), findsOneWidget);
+    });
+
+    testWidgets('canceling the delete confirmation keeps the todo', (
+      tester,
+    ) async {
+      await _pumpDashboard(
+        tester,
+        todoHttpClient: MockClient((request) async {
+          if (request.method == 'DELETE') {
+            fail('should not delete when the user cancels');
+          }
+          return _json({
+            'items': [
+              {'id': 1, 'trip_id': 'trip-1', 'name': 'Book campsite'},
+            ],
+          });
+        }),
+      );
+      await tester.tap(find.text('Todos'));
+      await tester.pumpAndSettle();
+
+      await tester.drag(find.text('Book campsite'), const Offset(-500, 0));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Book campsite'), findsOneWidget);
+    });
+
+    testWidgets(
+      'deleting while offline hides the todo and does not show an error',
+      (tester) async {
+        await _pumpDashboard(
+          tester,
+          todoHttpClient: MockClient((request) async {
+            if (request.method == 'DELETE') {
+              throw http.ClientException('Connection refused');
+            }
+            return _json({
+              'items': [
+                {'id': 1, 'trip_id': 'trip-1', 'name': 'Book campsite'},
+              ],
+            });
+          }),
+        );
+        await tester.tap(find.text('Todos'));
+        await tester.pumpAndSettle();
+
+        await tester.drag(find.text('Book campsite'), const Offset(-500, 0));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Delete'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Book campsite'), findsNothing);
+        expect(find.text('No todos yet.'), findsOneWidget);
+      },
+    );
   });
 }

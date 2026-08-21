@@ -23,6 +23,10 @@ import 'todo_local_store.dart';
 /// - [toggleChecked] flips an item's checked state in the cache immediately
 ///   and returns it; if the update can't reach the server it stays queued
 ///   ([TodoItem.pendingChecked]) and is retried the same way.
+/// - [deleteItem] hides an item from the cache immediately; if the delete
+///   can't reach the server it stays queued as a tombstone
+///   ([TodoItem.pendingDelete]) and is retried the same way. A 404 (already
+///   gone server-side) is treated as success rather than resurrected.
 class TodoRepository {
   TodoRepository({required TodoApi todoApi, required TodoLocalStore localStore})
     : _todoApi = todoApi,
@@ -48,15 +52,26 @@ class TodoRepository {
         for (final item in afterRetry)
           if (!item.isPending && item.pendingChecked) item.id: item,
       };
+      // A delete that's still queued (offline) would otherwise be
+      // resurrected by the server still listing it below.
+      final stillPendingDeletes = {
+        for (final item in afterRetry)
+          if (!item.isPending && item.pendingDelete) item.id,
+      };
       final merged = [
         for (final serverItem in serverItems)
-          stillPendingToggles[serverItem.id] ?? serverItem,
+          if (!stillPendingDeletes.contains(serverItem.id))
+            stillPendingToggles[serverItem.id] ?? serverItem,
         // Items this call just retried into existence (or that were
-        // already pending) don't necessarily show up in `serverItems` yet
-        // — e.g. the retry above raced this list call. Keep them rather
-        // than silently dropping an item the user just created.
+        // already pending, or are still queued for delete) don't
+        // necessarily show up in `serverItems` yet — e.g. the retry above
+        // raced this list call. Keep them rather than silently dropping an
+        // item the user just created or tried to delete.
         ...afterRetry.where(
-          (item) => item.isPending || !serverIds.contains(item.id),
+          (item) =>
+              item.isPending ||
+              item.pendingDelete ||
+              !serverIds.contains(item.id),
         ),
       ];
       await _localStore.write(tripId, merged);
@@ -102,6 +117,43 @@ class TodoRepository {
     }
   }
 
+  /// Deletes [item]. A never-synced item ([TodoItem.isPending]) is dropped
+  /// from the cache outright — there's nothing to tell the server. A synced
+  /// item is hidden from the cache immediately (its [TodoItem.pendingDelete]
+  /// flag flips) and the delete request fires:
+  ///
+  /// - Can't reach the server ([NetworkException]): the tombstone stays in
+  ///   the cache and the next [refreshItems] call retries it.
+  /// - The server says it's already gone (404): treated the same as
+  ///   success rather than resurrected.
+  /// - Any other rejection (permissions, server error): the item is
+  ///   restored and the error rethrown.
+  Future<void> deleteItem(String tripId, TodoItem item) async {
+    if (item.isPending) {
+      await _remove(tripId, item.localId);
+      return;
+    }
+
+    final optimistic = item.copyWithPendingDelete(true);
+    await _replace(tripId, item.localId, optimistic);
+
+    try {
+      await _todoApi.deleteItem(tripId, id: item.id!);
+      await _remove(tripId, item.localId);
+    } on NetworkException {
+      // stays queued; refreshItems() retries it.
+    } on ServerException catch (e) {
+      if (e.statusCode != 404) {
+        await _replace(tripId, item.localId, item);
+        rethrow;
+      }
+      await _remove(tripId, item.localId); // already gone server-side
+    } catch (_) {
+      await _replace(tripId, item.localId, item);
+      rethrow;
+    }
+  }
+
   Future<void> _replace(
     String tripId,
     String localId,
@@ -111,6 +163,14 @@ class TodoRepository {
     await _localStore.write(tripId, [
       for (final cachedItem in cached)
         if (cachedItem.localId == localId) replacement else cachedItem,
+    ]);
+  }
+
+  Future<void> _remove(String tripId, String localId) async {
+    final cached = await _localStore.read(tripId);
+    await _localStore.write(tripId, [
+      for (final cachedItem in cached)
+        if (cachedItem.localId != localId) cachedItem,
     ]);
   }
 
@@ -153,11 +213,13 @@ class TodoRepository {
     }
   }
 
-  /// Retries every not-yet-synced item in [items] — both offline-created
-  /// items ([TodoItem.isPending]) and offline checked/unchecked toggles
-  /// ([TodoItem.pendingChecked]) — before [refreshItems] fetches the real
-  /// list. An item can only be in one of those two states at a time: a
-  /// pending-create item isn't toggleable yet (see [toggleChecked]).
+  /// Retries every not-yet-synced item in [items] — offline-created items
+  /// ([TodoItem.isPending]), offline checked/unchecked toggles
+  /// ([TodoItem.pendingChecked]), and offline deletes
+  /// ([TodoItem.pendingDelete]) — before [refreshItems] fetches the real
+  /// list. An item can only be in one of those three states at a time: a
+  /// pending-create item isn't toggleable or deletable-on-the-server yet
+  /// (see [toggleChecked], [deleteItem]).
   Future<List<TodoItem>> _retryPending(
     String tripId,
     List<TodoItem> items,
@@ -174,6 +236,18 @@ class TodoRepository {
           result.add(_reconcile(item, synced));
         } on NetworkException {
           result.add(item); // still offline — keep it queued
+        }
+        continue;
+      }
+      if (item.pendingDelete) {
+        try {
+          await _todoApi.deleteItem(tripId, id: item.id!);
+          // Synced — drop it from the result entirely.
+        } on NetworkException {
+          result.add(item); // still offline — keep it queued
+        } on ServerException catch (e) {
+          if (e.statusCode != 404) rethrow;
+          // Already gone server-side — drop it, same as a successful delete.
         }
         continue;
       }

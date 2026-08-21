@@ -132,8 +132,10 @@ class _PlacesPreviewTab extends StatelessWidget {
 /// the next refresh, the same shape as `PackingRepository.createItem`.
 /// Tapping a synced row toggles it checked/unchecked the same way
 /// ([TodoRepository.toggleChecked]); a still-pending (unsynced) row isn't
-/// tappable. Delete/reorder, due dates, description, assignment, and
-/// priority remain unbuilt for issue #9.
+/// tappable. Swiping a row deletes it, after confirmation
+/// ([TodoRepository.deleteItem]) — a delete made while offline stays queued
+/// and the row stays hidden. Reorder, due dates, description, assignment,
+/// and priority remain unbuilt for issue #9.
 class _TodosTab extends ConsumerStatefulWidget {
   const _TodosTab({super.key, required this.tripId});
 
@@ -200,6 +202,44 @@ class _TodosTabState extends ConsumerState<_TodosTab> {
     }
   }
 
+  Future<bool> _confirmDelete(TodoItem item) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete todo?'),
+        content: Text('"${item.name}" will be removed.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    return confirmed ?? false;
+  }
+
+  Future<void> _deleteItem(TodoItem item) async {
+    setState(() {
+      _items = [
+        for (final existing in _items ?? const <TodoItem>[])
+          if (existing.localId != item.localId) existing,
+      ];
+    });
+
+    try {
+      await ref.read(todoRepositoryProvider).deleteItem(widget.tripId, item);
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() => _items = [...?_items, item]);
+      AppMessenger.showError(e.message);
+    }
+  }
+
   Future<void> createItem() async {
     final result = await showDialog<_NewTodoItem>(
       context: context,
@@ -230,9 +270,9 @@ class _TodosTabState extends ConsumerState<_TodosTab> {
 
   @override
   Widget build(BuildContext context) {
-    final items = _items;
+    final cached = _items;
 
-    if (items == null) {
+    if (cached == null) {
       return ListView(
         padding: const EdgeInsets.all(AppSpacing.md),
         children: const [
@@ -242,6 +282,11 @@ class _TodosTabState extends ConsumerState<_TodosTab> {
         ],
       );
     }
+
+    // A still-queued (offline) delete is hidden here but kept in the cache
+    // as a tombstone so the next refresh can retry it — see
+    // TodoRepository.deleteItem.
+    final items = cached.where((item) => !item.pendingDelete).toList();
 
     if (items.isEmpty) {
       final error = _error;
@@ -269,17 +314,32 @@ class _TodosTabState extends ConsumerState<_TodosTab> {
         itemCount: items.length,
         itemBuilder: (context, index) {
           final item = items[index];
-          return AppListRow(
-            title: item.name,
-            subtitle: item.isPending ? 'Syncing…' : item.category,
-            trailing: Icon(
-              item.isPending
-                  ? Icons.sync
-                  : item.checked
-                  ? Icons.check_circle
-                  : Icons.radio_button_unchecked,
+          return Dismissible(
+            key: ValueKey(item.localId),
+            direction: DismissDirection.endToStart,
+            background: Container(
+              alignment: Alignment.centerRight,
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+              color: Theme.of(context).colorScheme.errorContainer,
+              child: Icon(
+                Icons.delete,
+                color: Theme.of(context).colorScheme.onErrorContainer,
+              ),
             ),
-            onTap: item.isPending ? null : () => _toggleChecked(item),
+            confirmDismiss: (_) => _confirmDelete(item),
+            onDismissed: (_) => _deleteItem(item),
+            child: AppListRow(
+              title: item.name,
+              subtitle: item.isPending ? 'Syncing…' : item.category,
+              trailing: Icon(
+                item.isPending
+                    ? Icons.sync
+                    : item.checked
+                    ? Icons.check_circle
+                    : Icons.radio_button_unchecked,
+              ),
+              onTap: item.isPending ? null : () => _toggleChecked(item),
+            ),
           );
         },
       ),

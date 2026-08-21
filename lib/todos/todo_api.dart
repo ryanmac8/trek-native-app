@@ -66,4 +66,10 @@ class TodoApi {
       tripId: tripId,
     );
   }
+
+  /// `DELETE /api/trips/:tripId/todo/:id`. A missing item surfaces as the
+  /// server's 404 `{ error: 'Item not found' }`, same as [updateChecked].
+  Future<void> deleteItem(String tripId, {required int id}) async {
+    await _apiClient.delete('/api/trips/$tripId/todo/$id');
+  }
 }

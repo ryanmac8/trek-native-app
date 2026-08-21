@@ -26,6 +26,7 @@ class TodoItem {
     this.category,
     this.checked = false,
     this.pendingChecked = false,
+    this.pendingDelete = false,
   });
 
   final int? id;
@@ -40,6 +41,13 @@ class TodoItem {
   /// (offline) or the update request is in flight. Cache-only bookkeeping,
   /// like [localId]; never sent to or read from the API.
   final bool pendingChecked;
+
+  /// True when this item was deleted locally (via [TodoRepository.deleteItem])
+  /// but the server hasn't confirmed it yet — kept in the cache as a
+  /// tombstone so [TodoRepository.refreshItems] can retry the delete, but
+  /// hidden from the Todos tab in the meantime. Cache-only bookkeeping, like
+  /// [pendingChecked]; never sent to or read from the API.
+  final bool pendingDelete;
 
   /// True for an item created locally that hasn't been confirmed by the
   /// server yet — either still queued (offline) or its create request is in
@@ -57,6 +65,22 @@ class TodoItem {
       category: category,
       checked: checked,
       pendingChecked: pendingChecked,
+      pendingDelete: pendingDelete,
+    );
+  }
+
+  /// A copy with [pendingDelete] replaced — the only field
+  /// [TodoRepository.deleteItem] ever needs to change.
+  TodoItem copyWithPendingDelete(bool pendingDelete) {
+    return TodoItem(
+      id: id,
+      localId: localId,
+      tripId: tripId,
+      name: name,
+      category: category,
+      checked: checked,
+      pendingChecked: pendingChecked,
+      pendingDelete: pendingDelete,
     );
   }
 
@@ -93,6 +117,7 @@ class TodoItem {
     'category': category,
     'checked': checked,
     'pending_checked': pendingChecked,
+    'pending_delete': pendingDelete,
   };
 
   factory TodoItem.fromCacheJson(Map<String, dynamic> json) {
@@ -104,6 +129,7 @@ class TodoItem {
       category: json['category'] as String?,
       checked: json['checked'] as bool? ?? false,
       pendingChecked: json['pending_checked'] as bool? ?? false,
+      pendingDelete: json['pending_delete'] as bool? ?? false,
     );
   }
 }

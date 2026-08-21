@@ -279,6 +279,109 @@ void main() {
     );
 
     test(
+      'retries a pending offline delete and drops the item once synced',
+      () async {
+        final localStore = InMemoryTodoLocalStore(
+          initial: {
+            '20': [
+              const TodoItem(
+                id: 7,
+                localId: 'server-7',
+                tripId: '20',
+                name: 'Book campsite',
+                pendingDelete: true,
+              ),
+            ],
+          },
+        );
+        var deleteCalls = 0;
+        final repository = _repository(
+          httpClient: MockClient((request) async {
+            if (request.method == 'DELETE') {
+              deleteCalls++;
+              return _json({'success': true});
+            }
+            return _json({'items': []});
+          }),
+          localStore: localStore,
+        );
+
+        final items = await repository.refreshItems('20');
+
+        expect(deleteCalls, 1);
+        expect(items, isEmpty);
+        expect(await localStore.read('20'), isEmpty);
+      },
+    );
+
+    test('a still-offline delete stays queued and is not resurrected by the '
+        'server still listing the item', () async {
+      final localStore = InMemoryTodoLocalStore(
+        initial: {
+          '20': [
+            const TodoItem(
+              id: 7,
+              localId: 'server-7',
+              tripId: '20',
+              name: 'Book campsite',
+              pendingDelete: true,
+            ),
+          ],
+        },
+      );
+      final repository = _repository(
+        httpClient: MockClient((request) async {
+          if (request.method == 'DELETE') {
+            throw http.ClientException('Connection refused');
+          }
+          return _json({
+            'items': [
+              {'id': 7, 'trip_id': 20, 'name': 'Book campsite'},
+            ],
+          });
+        }),
+        localStore: localStore,
+      );
+
+      final items = await repository.refreshItems('20');
+
+      expect(items.single.pendingDelete, isTrue);
+      expect(items.single.localId, 'server-7');
+    });
+
+    test(
+      'a delete retry that finds the item already gone (404) drops it too',
+      () async {
+        final localStore = InMemoryTodoLocalStore(
+          initial: {
+            '20': [
+              const TodoItem(
+                id: 7,
+                localId: 'server-7',
+                tripId: '20',
+                name: 'Book campsite',
+                pendingDelete: true,
+              ),
+            ],
+          },
+        );
+        final repository = _repository(
+          httpClient: MockClient((request) async {
+            if (request.method == 'DELETE') {
+              return _json({'error': 'Item not found'}, 404);
+            }
+            return _json({'items': []});
+          }),
+          localStore: localStore,
+        );
+
+        final items = await repository.refreshItems('20');
+
+        expect(items, isEmpty);
+      },
+    );
+
+    test(
       'caches for different trips stay independent through a refresh',
       () async {
         final localStore = InMemoryTodoLocalStore(
@@ -463,6 +566,118 @@ void main() {
         final cached = await localStore.read('20');
         expect(cached.single.checked, isFalse);
         expect(cached.single.pendingChecked, isFalse);
+      },
+    );
+  });
+
+  group('deleteItem', () {
+    const item = TodoItem(
+      id: 7,
+      localId: 'server-7',
+      tripId: '20',
+      name: 'Book campsite',
+    );
+
+    test('removes the item from the cache immediately once synced', () async {
+      final localStore = InMemoryTodoLocalStore(
+        initial: {
+          '20': [item],
+        },
+      );
+      Uri? requestedUri;
+      final repository = _repository(
+        httpClient: MockClient((request) async {
+          requestedUri = request.url;
+          return _json({'success': true});
+        }),
+        localStore: localStore,
+      );
+
+      await repository.deleteItem('20', item);
+
+      expect(requestedUri?.path, '/api/trips/20/todo/7');
+      expect(await localStore.read('20'), isEmpty);
+    });
+
+    test('drops a never-synced (pending) item locally without hitting the '
+        'network', () async {
+      const pending = TodoItem(localId: 'local-1', tripId: '20', name: 'Draft');
+      final localStore = InMemoryTodoLocalStore(
+        initial: {
+          '20': [pending],
+        },
+      );
+      final repository = _repository(
+        httpClient: MockClient((request) async {
+          fail('should not attempt to delete a not-yet-synced item');
+        }),
+        localStore: localStore,
+      );
+
+      await repository.deleteItem('20', pending);
+
+      expect(await localStore.read('20'), isEmpty);
+    });
+
+    test('stays queued as a pending-delete tombstone in the cache when '
+        'offline, instead of failing or blocking', () async {
+      final localStore = InMemoryTodoLocalStore(
+        initial: {
+          '20': [item],
+        },
+      );
+      final repository = _repository(
+        httpClient: MockClient((request) async {
+          throw http.ClientException('Connection refused');
+        }),
+        localStore: localStore,
+      );
+
+      await repository.deleteItem('20', item);
+
+      final cached = await localStore.read('20');
+      expect(cached.single.pendingDelete, isTrue);
+    });
+
+    test('treats a 404 (already gone) the same as success', () async {
+      final localStore = InMemoryTodoLocalStore(
+        initial: {
+          '20': [item],
+        },
+      );
+      final repository = _repository(
+        httpClient: MockClient(
+          (request) async => _json({'error': 'Item not found'}, 404),
+        ),
+        localStore: localStore,
+      );
+
+      await repository.deleteItem('20', item);
+
+      expect(await localStore.read('20'), isEmpty);
+    });
+
+    test(
+      'rolls back the optimistic delete when the server rejects the request',
+      () async {
+        final localStore = InMemoryTodoLocalStore(
+          initial: {
+            '20': [item],
+          },
+        );
+        final repository = _repository(
+          httpClient: MockClient(
+            (request) async => _json({'error': 'No permission'}, 403),
+          ),
+          localStore: localStore,
+        );
+
+        await expectLater(
+          repository.deleteItem('20', item),
+          throwsA(isA<ApiException>()),
+        );
+        final cached = await localStore.read('20');
+        expect(cached.single.pendingDelete, isFalse);
       },
     );
   });

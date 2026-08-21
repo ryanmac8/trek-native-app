@@ -173,4 +173,31 @@ void main() {
       );
     });
   });
+
+  group('deleteItem', () {
+    test('DELETEs the item-scoped endpoint', () async {
+      Uri? requestedUri;
+      String? requestedMethod;
+      final api = _api(
+        MockClient((request) async {
+          requestedUri = request.url;
+          requestedMethod = request.method;
+          return _json({'success': true});
+        }),
+      );
+
+      await api.deleteItem('20', id: 7);
+
+      expect(requestedMethod, 'DELETE');
+      expect(requestedUri?.path, '/api/trips/20/todo/7');
+    });
+
+    test('a missing item surfaces the server\'s 404 message', () async {
+      final api = _api(
+        MockClient((request) async => _json({'error': 'Item not found'}, 404)),
+      );
+
+      expect(api.deleteItem('20', id: 999), throwsA(isA<ApiException>()));
+    });
+  });
 }
