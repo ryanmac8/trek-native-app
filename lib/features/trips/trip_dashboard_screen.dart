@@ -339,6 +339,7 @@ class _TodosTabState extends ConsumerState<_TodosTab> {
         padding: const EdgeInsets.all(AppSpacing.md),
         buildDefaultDragHandles: false,
         itemCount: items.length,
+        // ignore: deprecated_member_use
         onReorder: _reorderItems,
         itemBuilder: (context, index) {
           final item = items[index];
