@@ -223,6 +223,32 @@ class _TodosTabState extends ConsumerState<_TodosTab> {
     return confirmed ?? false;
   }
 
+  Future<void> _reorderItems(int oldIndex, int newIndex) async {
+    final current = _items ?? const <TodoItem>[];
+    final visible = current.where((item) => !item.pendingDelete).toList();
+    // Tombstones (still-queued offline deletes) are hidden from the visible
+    // list `oldIndex`/`newIndex` index into, so they aren't part of the
+    // reorder — keep them appended, out of the way, until they sync away.
+    final tombstones = current.where((item) => item.pendingDelete).toList();
+
+    if (newIndex > oldIndex) newIndex -= 1;
+    final moved = visible.removeAt(oldIndex);
+    visible.insert(newIndex, moved);
+    final newOrder = [...visible, ...tombstones];
+
+    setState(() => _items = newOrder);
+
+    try {
+      await ref
+          .read(todoRepositoryProvider)
+          .reorderItems(widget.tripId, newOrder);
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() => _items = current);
+      AppMessenger.showError(e.message);
+    }
+  }
+
   Future<void> _deleteItem(TodoItem item) async {
     setState(() {
       _items = [
@@ -309,9 +335,11 @@ class _TodosTabState extends ConsumerState<_TodosTab> {
 
     return RefreshIndicator(
       onRefresh: _refresh,
-      child: ListView.builder(
+      child: ReorderableListView.builder(
         padding: const EdgeInsets.all(AppSpacing.md),
+        buildDefaultDragHandles: false,
         itemCount: items.length,
+        onReorder: _reorderItems,
         itemBuilder: (context, index) {
           final item = items[index];
           return Dismissible(
@@ -329,6 +357,10 @@ class _TodosTabState extends ConsumerState<_TodosTab> {
             confirmDismiss: (_) => _confirmDelete(item),
             onDismissed: (_) => _deleteItem(item),
             child: AppListRow(
+              leading: ReorderableDragStartListener(
+                index: index,
+                child: const Icon(Icons.drag_handle),
+              ),
               title: item.name,
               subtitle: item.isPending ? 'Syncing…' : item.category,
               trailing: Icon(

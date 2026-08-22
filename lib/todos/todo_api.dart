@@ -72,4 +72,15 @@ class TodoApi {
   Future<void> deleteItem(String tripId, {required int id}) async {
     await _apiClient.delete('/api/trips/$tripId/todo/$id');
   }
+
+  /// `PUT /api/trips/:tripId/todo/reorder`. [orderedIds] is every synced
+  /// item's server id in its new display order; the server sets each row's
+  /// `sort_order` to its index in that list. Unknown ids are silently
+  /// ignored rather than rejected (confirmed against `todoService.reorderItems`).
+  Future<void> reorderItems(String tripId, List<int> orderedIds) async {
+    await _apiClient.put(
+      '/api/trips/$tripId/todo/reorder',
+      body: {'orderedIds': orderedIds},
+    );
+  }
 }

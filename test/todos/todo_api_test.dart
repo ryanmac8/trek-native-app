@@ -200,4 +200,36 @@ void main() {
       expect(api.deleteItem('20', id: 999), throwsA(isA<ApiException>()));
     });
   });
+
+  group('reorderItems', () {
+    test('PUTs orderedIds to the reorder endpoint', () async {
+      Uri? requestedUri;
+      String? requestedMethod;
+      Map<String, dynamic>? sentBody;
+      final api = _api(
+        MockClient((request) async {
+          requestedUri = request.url;
+          requestedMethod = request.method;
+          sentBody = jsonDecode(request.body) as Map<String, dynamic>;
+          return _json({'success': true});
+        }),
+      );
+
+      await api.reorderItems('20', [7, 3, 9]);
+
+      expect(requestedMethod, 'PUT');
+      expect(requestedUri?.path, '/api/trips/20/todo/reorder');
+      expect(sentBody, {
+        'orderedIds': [7, 3, 9],
+      });
+    });
+
+    test('a rejected reorder surfaces as an exception', () async {
+      final api = _api(
+        MockClient((request) async => _json({'error': 'No permission'}, 403)),
+      );
+
+      expect(api.reorderItems('20', [7, 3]), throwsA(isA<ApiException>()));
+    });
+  });
 }

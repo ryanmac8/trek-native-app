@@ -88,5 +88,32 @@ void main() {
         expect(result.single.isPending, isTrue);
       },
     );
+
+    test('readReorderPending() is false when nothing was flagged', () async {
+      expect(await store.readReorderPending('20'), isFalse);
+    });
+
+    test(
+      'writeReorderPending() then readReorderPending() round-trips true',
+      () async {
+        await store.writeReorderPending('20', true);
+
+        expect(await store.readReorderPending('20'), isTrue);
+      },
+    );
+
+    test('writeReorderPending(false) clears a previously set flag', () async {
+      await store.writeReorderPending('20', true);
+      await store.writeReorderPending('20', false);
+
+      expect(await store.readReorderPending('20'), isFalse);
+    });
+
+    test('reorder-pending flags for different trips are independent', () async {
+      await store.writeReorderPending('20', true);
+
+      expect(await store.readReorderPending('20'), isTrue);
+      expect(await store.readReorderPending('21'), isFalse);
+    });
   });
 }

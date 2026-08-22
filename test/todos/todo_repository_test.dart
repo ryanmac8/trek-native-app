@@ -681,4 +681,218 @@ void main() {
       },
     );
   });
+
+  group('reorderItems', () {
+    const first = TodoItem(id: 1, localId: 'server-1', tripId: '20', name: 'A');
+    const second = TodoItem(
+      id: 2,
+      localId: 'server-2',
+      tripId: '20',
+      name: 'B',
+    );
+
+    test(
+      'writes the new order to the cache immediately, then syncs it',
+      () async {
+        final localStore = InMemoryTodoLocalStore(
+          initial: {
+            '20': [first, second],
+          },
+        );
+        List<int>? sentIds;
+        final repository = _repository(
+          httpClient: MockClient((request) async {
+            sentIds = List<int>.from(
+              (jsonDecode(request.body) as Map<String, dynamic>)['orderedIds']
+                  as List,
+            );
+            return _json({'success': true});
+          }),
+          localStore: localStore,
+        );
+
+        await repository.reorderItems('20', [second, first]);
+
+        expect(sentIds, [2, 1]);
+        final cached = await localStore.read('20');
+        expect(cached.map((i) => i.id), [2, 1]);
+        expect(await localStore.readReorderPending('20'), isFalse);
+      },
+    );
+
+    test(
+      'stays queued as reorder-pending in the cache when offline, instead of '
+      'failing or blocking',
+      () async {
+        final localStore = InMemoryTodoLocalStore(
+          initial: {
+            '20': [first, second],
+          },
+        );
+        final repository = _repository(
+          httpClient: MockClient((request) async {
+            throw http.ClientException('Connection refused');
+          }),
+          localStore: localStore,
+        );
+
+        await repository.reorderItems('20', [second, first]);
+
+        final cached = await localStore.read('20');
+        expect(cached.map((i) => i.id), [2, 1]);
+        expect(await localStore.readReorderPending('20'), isTrue);
+      },
+    );
+
+    test(
+      'rolls back to the previous order when the server rejects the request',
+      () async {
+        final localStore = InMemoryTodoLocalStore(
+          initial: {
+            '20': [first, second],
+          },
+        );
+        final repository = _repository(
+          httpClient: MockClient(
+            (request) async => _json({'error': 'No permission'}, 403),
+          ),
+          localStore: localStore,
+        );
+
+        await expectLater(
+          repository.reorderItems('20', [second, first]),
+          throwsA(isA<ApiException>()),
+        );
+        final cached = await localStore.read('20');
+        expect(cached.map((i) => i.id), [1, 2]);
+        expect(await localStore.readReorderPending('20'), isFalse);
+      },
+    );
+
+    test(
+      'excludes not-yet-synced and tombstoned items from the synced ids',
+      () async {
+        const pending = TodoItem(
+          localId: 'local-1',
+          tripId: '20',
+          name: 'Draft',
+        );
+        const tombstoned = TodoItem(
+          id: 3,
+          localId: 'server-3',
+          tripId: '20',
+          name: 'C',
+          pendingDelete: true,
+        );
+        final localStore = InMemoryTodoLocalStore(
+          initial: {
+            '20': [first, second, pending, tombstoned],
+          },
+        );
+        List<int>? sentIds;
+        final repository = _repository(
+          httpClient: MockClient((request) async {
+            sentIds = List<int>.from(
+              (jsonDecode(request.body) as Map<String, dynamic>)['orderedIds']
+                  as List,
+            );
+            return _json({'success': true});
+          }),
+          localStore: localStore,
+        );
+
+        await repository.reorderItems('20', [
+          second,
+          first,
+          pending,
+          tombstoned,
+        ]);
+
+        expect(sentIds, [2, 1]);
+      },
+    );
+  });
+
+  group('refreshItems reorder retry', () {
+    const first = TodoItem(id: 1, localId: 'server-1', tripId: '20', name: 'A');
+    const second = TodoItem(
+      id: 2,
+      localId: 'server-2',
+      tripId: '20',
+      name: 'B',
+    );
+
+    test(
+      'syncs a queued reorder and clears the pending flag once it succeeds',
+      () async {
+        final localStore = InMemoryTodoLocalStore(
+          initial: {
+            '20': [second, first],
+          },
+        );
+        await localStore.writeReorderPending('20', true);
+        var reorderCalls = 0;
+        // A real server persists sort_order before answering the next GET —
+        // simulate that instead of returning a GET response that ignores
+        // the PUT.
+        var serverOrder = [1, 2];
+        final repository = _repository(
+          httpClient: MockClient((request) async {
+            if (request.method == 'PUT') {
+              reorderCalls++;
+              serverOrder = List<int>.from(
+                (jsonDecode(request.body) as Map<String, dynamic>)['orderedIds']
+                    as List,
+              );
+              return _json({'success': true});
+            }
+            return _json({
+              'items': [
+                for (final id in serverOrder)
+                  {'id': id, 'trip_id': 20, 'name': id == 1 ? 'A' : 'B'},
+              ],
+            });
+          }),
+          localStore: localStore,
+        );
+
+        final items = await repository.refreshItems('20');
+
+        expect(reorderCalls, 1);
+        expect(items.map((i) => i.id), [2, 1]);
+        expect(await localStore.readReorderPending('20'), isFalse);
+      },
+    );
+
+    test(
+      'keeps the local order when the reorder retry is still offline',
+      () async {
+        final localStore = InMemoryTodoLocalStore(
+          initial: {
+            '20': [second, first],
+          },
+        );
+        await localStore.writeReorderPending('20', true);
+        final repository = _repository(
+          httpClient: MockClient((request) async {
+            if (request.method == 'PUT') {
+              throw http.ClientException('Connection refused');
+            }
+            return _json({
+              'items': [
+                {'id': 1, 'trip_id': 20, 'name': 'A'},
+                {'id': 2, 'trip_id': 20, 'name': 'B'},
+              ],
+            });
+          }),
+          localStore: localStore,
+        );
+
+        final items = await repository.refreshItems('20');
+
+        expect(items.map((i) => i.id), [2, 1]);
+        expect(await localStore.readReorderPending('20'), isTrue);
+      },
+    );
+  });
 }

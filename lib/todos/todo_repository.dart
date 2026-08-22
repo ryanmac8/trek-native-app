@@ -27,6 +27,11 @@ import 'todo_local_store.dart';
 ///   can't reach the server it stays queued as a tombstone
 ///   ([TodoItem.pendingDelete]) and is retried the same way. A 404 (already
 ///   gone server-side) is treated as success rather than resurrected.
+/// - [reorderItems] writes the new item order to the cache immediately and
+///   returns; if the sync can't reach the server the new order stays
+///   queued ([TodoLocalStore.readReorderPending]) and is retried the same
+///   way, with the local order winning over the server's (stale) order
+///   until it syncs.
 class TodoRepository {
   TodoRepository({required TodoApi todoApi, required TodoLocalStore localStore})
     : _todoApi = todoApi,
@@ -43,9 +48,15 @@ class TodoRepository {
       await _localStore.read(tripId),
     );
 
+    var reorderStillPending = false;
+    if (await _localStore.readReorderPending(tripId)) {
+      reorderStillPending = !await _retryReorder(tripId, afterRetry);
+    }
+
     try {
       final serverItems = await _todoApi.listItems(tripId);
-      final serverIds = serverItems.map((item) => item.id).toSet();
+      final serverById = {for (final item in serverItems) item.id: item};
+      final serverIds = serverById.keys.toSet();
       // A toggle that's still queued (offline) would otherwise be
       // overwritten by the server's stale `checked` value below.
       final stillPendingToggles = {
@@ -58,10 +69,19 @@ class TodoRepository {
         for (final item in afterRetry)
           if (!item.isPending && item.pendingDelete) item.id,
       };
+      // A reorder that's still queued (offline) would otherwise be
+      // overwritten by the server's stale ordering below — prefer the
+      // local cache's order for the ids both sides agree exist.
+      final orderedIds = reorderStillPending
+          ? [
+              for (final item in afterRetry)
+                if (item.id != null) item.id!,
+            ]
+          : serverItems.map((item) => item.id!).toList();
       final merged = [
-        for (final serverItem in serverItems)
-          if (!stillPendingDeletes.contains(serverItem.id))
-            stillPendingToggles[serverItem.id] ?? serverItem,
+        for (final id in orderedIds)
+          if (serverById.containsKey(id) && !stillPendingDeletes.contains(id))
+            stillPendingToggles[id] ?? serverById[id]!,
         // Items this call just retried into existence (or that were
         // already pending, or are still queued for delete) don't
         // necessarily show up in `serverItems` yet — e.g. the retry above
@@ -82,6 +102,24 @@ class TodoRepository {
       rethrow;
     }
   }
+
+  /// Retries a queued reorder (see [reorderItems]) using [items]' current
+  /// cache order for the ids the server already knows about. Returns
+  /// whether it synced.
+  Future<bool> _retryReorder(String tripId, List<TodoItem> items) async {
+    try {
+      await _todoApi.reorderItems(tripId, _syncedIds(items));
+      await _localStore.writeReorderPending(tripId, false);
+      return true;
+    } on NetworkException {
+      return false;
+    }
+  }
+
+  List<int> _syncedIds(List<TodoItem> items) => [
+    for (final item in items)
+      if (!item.isPending && !item.pendingDelete) item.id!,
+  ];
 
   /// Optimistically flips [item]'s checked state in the cache immediately,
   /// then tries to sync it. Mirrors [createItem]'s shape:
@@ -150,6 +188,32 @@ class TodoRepository {
       await _remove(tripId, item.localId); // already gone server-side
     } catch (_) {
       await _replace(tripId, item.localId, item);
+      rethrow;
+    }
+  }
+
+  /// Optimistically writes [newOrder] (the same items as the cache, just
+  /// resequenced) to the cache, then tries to sync it. Mirrors the other
+  /// mutations' optimistic-then-reconcile shape at the list level:
+  ///
+  /// - Can't reach the server ([NetworkException]): the new order stays in
+  ///   the cache and [TodoLocalStore.readReorderPending] flips true, so the
+  ///   next [refreshItems] call retries it.
+  /// - A genuine rejection: the previous order is restored and the error
+  ///   rethrown.
+  Future<void> reorderItems(String tripId, List<TodoItem> newOrder) async {
+    final previous = await _localStore.read(tripId);
+    await _localStore.write(tripId, newOrder);
+    await _localStore.writeReorderPending(tripId, true);
+
+    try {
+      await _todoApi.reorderItems(tripId, _syncedIds(newOrder));
+      await _localStore.writeReorderPending(tripId, false);
+    } on NetworkException {
+      // stays queued; refreshItems() retries it.
+    } catch (_) {
+      await _localStore.write(tripId, previous);
+      await _localStore.writeReorderPending(tripId, false);
       rethrow;
     }
   }

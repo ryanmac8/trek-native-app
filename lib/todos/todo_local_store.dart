@@ -13,6 +13,14 @@ import 'todo_item.dart';
 abstract class TodoLocalStore {
   Future<List<TodoItem>> read(String tripId);
   Future<void> write(String tripId, List<TodoItem> items);
+
+  /// Whether a drag-to-reorder is queued for retry — the cache's current
+  /// item order was written locally but hasn't been confirmed by the server
+  /// yet (see [TodoRepository.reorderItems]). List-level, unlike
+  /// [TodoItem.pendingChecked]/[TodoItem.pendingDelete], since reordering
+  /// isn't a property of any single item.
+  Future<bool> readReorderPending(String tripId);
+  Future<void> writeReorderPending(String tripId, bool pending);
 }
 
 /// Stores each trip's cached todo item list as JSON in
@@ -25,6 +33,23 @@ class PreferencesTodoLocalStore implements TodoLocalStore {
   final SharedPreferencesAsync _preferences;
 
   String _key(String tripId) => 'trek.todo.cache.$tripId';
+
+  String _reorderPendingKey(String tripId) =>
+      'trek.todo.reorder_pending.$tripId';
+
+  @override
+  Future<bool> readReorderPending(String tripId) async {
+    return await _preferences.getBool(_reorderPendingKey(tripId)) ?? false;
+  }
+
+  @override
+  Future<void> writeReorderPending(String tripId, bool pending) async {
+    if (pending) {
+      await _preferences.setBool(_reorderPendingKey(tripId), true);
+    } else {
+      await _preferences.remove(_reorderPendingKey(tripId));
+    }
+  }
 
   @override
   Future<List<TodoItem>> read(String tripId) async {

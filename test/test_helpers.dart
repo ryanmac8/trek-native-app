@@ -76,6 +76,7 @@ class InMemoryTodoLocalStore implements TodoLocalStore {
       };
 
   final Map<String, List<TodoItem>> _itemsByTripId;
+  final Set<String> _reorderPendingTripIds = {};
 
   @override
   Future<List<TodoItem>> read(String tripId) async =>
@@ -84,4 +85,17 @@ class InMemoryTodoLocalStore implements TodoLocalStore {
   @override
   Future<void> write(String tripId, List<TodoItem> items) async =>
       _itemsByTripId[tripId] = List.of(items);
+
+  @override
+  Future<bool> readReorderPending(String tripId) async =>
+      _reorderPendingTripIds.contains(tripId);
+
+  @override
+  Future<void> writeReorderPending(String tripId, bool pending) async {
+    if (pending) {
+      _reorderPendingTripIds.add(tripId);
+    } else {
+      _reorderPendingTripIds.remove(tripId);
+    }
+  }
 }

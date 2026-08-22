@@ -390,6 +390,50 @@ void main() {
       expect(find.text('No todos yet.'), findsOneWidget);
     });
 
+    testWidgets('dragging a todo by its handle reorders and syncs it', (
+      tester,
+    ) async {
+      List<int>? sentIds;
+      await _pumpDashboard(
+        tester,
+        todoHttpClient: MockClient((request) async {
+          if (request.method == 'PUT') {
+            sentIds = List<int>.from(
+              (jsonDecode(request.body) as Map<String, dynamic>)['orderedIds']
+                  as List,
+            );
+            return _json({'success': true});
+          }
+          return _json({
+            'items': [
+              {'id': 1, 'trip_id': 'trip-1', 'name': 'Book campsite'},
+              {'id': 2, 'trip_id': 'trip-1', 'name': 'Pack tent'},
+            ],
+          });
+        }),
+      );
+      await tester.tap(find.text('Todos'));
+      await tester.pumpAndSettle();
+      expect(
+        tester.getTopLeft(find.text('Book campsite')).dy <
+            tester.getTopLeft(find.text('Pack tent')).dy,
+        isTrue,
+      );
+
+      await tester.drag(
+        find.byIcon(Icons.drag_handle).first,
+        const Offset(0, 200),
+      );
+      await tester.pumpAndSettle();
+
+      expect(sentIds, [2, 1]);
+      expect(
+        tester.getTopLeft(find.text('Pack tent')).dy <
+            tester.getTopLeft(find.text('Book campsite')).dy,
+        isTrue,
+      );
+    });
+
     testWidgets('canceling the delete confirmation keeps the todo', (
       tester,
     ) async {
