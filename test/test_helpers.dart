@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:trek/auth/session_token.dart';
 import 'package:trek/auth/token_storage.dart';
+import 'package:trek/collab/collab_local_store.dart';
+import 'package:trek/collab/collab_note.dart';
 import 'package:trek/config/server_config.dart';
 
 /// Builds a syntactically-valid, unsigned JWT string for tests — Trek's
@@ -62,4 +64,24 @@ class InMemoryServerConfigStorage implements ServerConfigStorage {
 
   @override
   Future<void> clear() async => _config = null;
+}
+
+/// In-memory [CollabLocalStore] fake — avoids the `shared_preferences`
+/// platform channel in widget/repository tests. Keyed per trip id, like the
+/// real store.
+class InMemoryCollabLocalStore implements CollabLocalStore {
+  InMemoryCollabLocalStore({Map<String, List<CollabNote>> initial = const {}})
+    : _notesByTripId = {
+        for (final entry in initial.entries) entry.key: List.of(entry.value),
+      };
+
+  final Map<String, List<CollabNote>> _notesByTripId;
+
+  @override
+  Future<List<CollabNote>> read(String tripId) async =>
+      List.of(_notesByTripId[tripId] ?? const []);
+
+  @override
+  Future<void> write(String tripId, List<CollabNote> notes) async =>
+      _notesByTripId[tripId] = List.of(notes);
 }
