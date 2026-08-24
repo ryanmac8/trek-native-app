@@ -300,4 +300,279 @@ void main() {
       },
     );
   });
+
+  group('updateNote', () {
+    test(
+      'writes the edit locally first, then reconciles with the server',
+      () async {
+        final existing = CollabNote.fromJson({
+          'id': 7,
+          'trip_id': 20,
+          'title': 'Packing reminders',
+          'content': 'Bring sunscreen',
+        }, tripId: '20');
+        final localStore = InMemoryCollabLocalStore(
+          initial: {
+            '20': [existing],
+          },
+        );
+        final repository = _repository(
+          httpClient: MockClient(
+            (request) async => _json({
+              'note': {
+                'id': 7,
+                'trip_id': 20,
+                'title': 'Packing reminders (updated)',
+                'content': 'Bring sunscreen and a hat',
+              },
+            }),
+          ),
+          localStore: localStore,
+        );
+
+        final updated = await repository.updateNote(
+          '20',
+          existing,
+          title: 'Packing reminders (updated)',
+          content: 'Bring sunscreen and a hat',
+        );
+
+        expect(updated.title, 'Packing reminders (updated)');
+        expect(updated.needsSync, isFalse);
+        final cached = await localStore.read('20');
+        expect(cached, hasLength(1));
+        expect(cached.single.title, 'Packing reminders (updated)');
+        expect(cached.single.localId, existing.localId);
+      },
+    );
+
+    test('stays visible but needsSync when the edit cannot reach the server, '
+        'instead of failing or blocking', () async {
+      final existing = CollabNote.fromJson({
+        'id': 7,
+        'trip_id': 20,
+        'title': 'Packing reminders',
+      }, tripId: '20');
+      final localStore = InMemoryCollabLocalStore(
+        initial: {
+          '20': [existing],
+        },
+      );
+      final repository = _repository(
+        httpClient: MockClient((request) async {
+          throw http.ClientException('Connection refused');
+        }),
+        localStore: localStore,
+      );
+
+      final updated = await repository.updateNote(
+        '20',
+        existing,
+        title: 'Packing reminders (edited offline)',
+      );
+
+      expect(updated.title, 'Packing reminders (edited offline)');
+      expect(updated.needsSync, isTrue);
+      final cached = await localStore.read('20');
+      expect(cached.single.title, 'Packing reminders (edited offline)');
+      expect(cached.single.needsSync, isTrue);
+    });
+
+    test(
+      'rolls back to the previous note when the server rejects the edit',
+      () async {
+        final existing = CollabNote.fromJson({
+          'id': 7,
+          'trip_id': 20,
+          'title': 'Packing reminders',
+        }, tripId: '20');
+        final localStore = InMemoryCollabLocalStore(
+          initial: {
+            '20': [existing],
+          },
+        );
+        final repository = _repository(
+          httpClient: MockClient(
+            (request) async => _json({'error': 'No permission'}, 403),
+          ),
+          localStore: localStore,
+        );
+
+        await expectLater(
+          repository.updateNote('20', existing, title: 'Hijacked'),
+          throwsA(isA<ForbiddenException>()),
+        );
+        final cached = await localStore.read('20');
+        expect(cached.single.title, 'Packing reminders');
+      },
+    );
+
+    test('edits an unsynced (still-pending) note without hitting the network '
+        'at all', () async {
+      final pending = const CollabNote(
+        localId: 'local-1',
+        tripId: '20',
+        title: 'Draft',
+      );
+      final localStore = InMemoryCollabLocalStore(
+        initial: {
+          '20': [pending],
+        },
+      );
+      final repository = _repository(
+        httpClient: MockClient((request) async {
+          fail('updateNote() on a pending note should not hit the network');
+        }),
+        localStore: localStore,
+      );
+
+      final updated = await repository.updateNote(
+        '20',
+        pending,
+        title: 'Draft (edited)',
+      );
+
+      expect(updated.title, 'Draft (edited)');
+      expect(updated.isPending, isTrue);
+      final cached = await localStore.read('20');
+      expect(cached.single.title, 'Draft (edited)');
+    });
+  });
+
+  group('deleteNote', () {
+    test('deletes on the server, then drops the note from the cache', () async {
+      final existing = CollabNote.fromJson({
+        'id': 7,
+        'trip_id': 20,
+        'title': 'Packing reminders',
+      }, tripId: '20');
+      final localStore = InMemoryCollabLocalStore(
+        initial: {
+          '20': [existing],
+        },
+      );
+      var deleteCalls = 0;
+      final repository = _repository(
+        httpClient: MockClient((request) async {
+          deleteCalls++;
+          return _json({'success': true});
+        }),
+        localStore: localStore,
+      );
+
+      await repository.deleteNote('20', existing);
+
+      expect(deleteCalls, 1);
+      expect(await localStore.read('20'), isEmpty);
+    });
+
+    test('stays tombstoned (hidden) but queued when offline, instead of '
+        'failing or blocking', () async {
+      final existing = CollabNote.fromJson({
+        'id': 7,
+        'trip_id': 20,
+        'title': 'Packing reminders',
+      }, tripId: '20');
+      final localStore = InMemoryCollabLocalStore(
+        initial: {
+          '20': [existing],
+        },
+      );
+      final repository = _repository(
+        httpClient: MockClient((request) async {
+          throw http.ClientException('Connection refused');
+        }),
+        localStore: localStore,
+      );
+
+      await repository.deleteNote('20', existing);
+
+      final cached = await localStore.read('20');
+      expect(cached.single.pendingDelete, isTrue);
+      // Retried (not lost) on the next refresh — still offline, so the
+      // note stays tombstoned and nothing else is left to show.
+      await expectLater(
+        repository.refreshNotes('20'),
+        throwsA(isA<NetworkException>()),
+      );
+      expect((await localStore.read('20')).single.pendingDelete, isTrue);
+    });
+
+    test('restores the note when the server rejects the delete', () async {
+      final existing = CollabNote.fromJson({
+        'id': 7,
+        'trip_id': 20,
+        'title': 'Packing reminders',
+      }, tripId: '20');
+      final localStore = InMemoryCollabLocalStore(
+        initial: {
+          '20': [existing],
+        },
+      );
+      final repository = _repository(
+        httpClient: MockClient(
+          (request) async => _json({'error': 'No permission'}, 403),
+        ),
+        localStore: localStore,
+      );
+
+      await expectLater(
+        repository.deleteNote('20', existing),
+        throwsA(isA<ForbiddenException>()),
+      );
+      final cached = await localStore.read('20');
+      expect(cached.single.title, 'Packing reminders');
+      expect(cached.single.pendingDelete, isFalse);
+    });
+
+    test('deletes an unsynced (still-pending) note without hitting the '
+        'network at all', () async {
+      final pending = const CollabNote(
+        localId: 'local-1',
+        tripId: '20',
+        title: 'Draft',
+      );
+      final localStore = InMemoryCollabLocalStore(
+        initial: {
+          '20': [pending],
+        },
+      );
+      final repository = _repository(
+        httpClient: MockClient((request) async {
+          fail('deleteNote() on a pending note should not hit the network');
+        }),
+        localStore: localStore,
+      );
+
+      await repository.deleteNote('20', pending);
+
+      expect(await localStore.read('20'), isEmpty);
+    });
+
+    test(
+      'a 404 (already deleted elsewhere) is treated as success, not an error',
+      () async {
+        final existing = CollabNote.fromJson({
+          'id': 7,
+          'trip_id': 20,
+          'title': 'Packing reminders',
+        }, tripId: '20');
+        final localStore = InMemoryCollabLocalStore(
+          initial: {
+            '20': [existing],
+          },
+        );
+        final repository = _repository(
+          httpClient: MockClient(
+            (request) async => _json({'error': 'Note not found'}, 404),
+          ),
+          localStore: localStore,
+        );
+
+        await repository.deleteNote('20', existing);
+
+        expect(await localStore.read('20'), isEmpty);
+      },
+    );
+  });
 }

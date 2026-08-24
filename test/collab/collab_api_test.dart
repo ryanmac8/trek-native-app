@@ -148,4 +148,111 @@ void main() {
       );
     });
   });
+
+  group('updateNote', () {
+    test('PUTs to the note-scoped endpoint and parses the result', () async {
+      Uri? requestedUri;
+      String? method;
+      Map<String, dynamic>? sentBody;
+      final api = _api(
+        MockClient((request) async {
+          requestedUri = request.url;
+          method = request.method;
+          sentBody = jsonDecode(request.body) as Map<String, dynamic>;
+          return _json({
+            'note': {
+              'id': 7,
+              'trip_id': 20,
+              'title': 'Packing reminders (updated)',
+              'content': 'Bring sunscreen and a hat',
+              'category': 'Logistics',
+              'pinned': 0,
+            },
+          });
+        }),
+      );
+
+      final note = await api.updateNote(
+        '20',
+        7,
+        title: 'Packing reminders (updated)',
+        content: 'Bring sunscreen and a hat',
+        category: 'Logistics',
+      );
+
+      expect(requestedUri?.path, '/api/trips/20/collab/notes/7');
+      expect(method, 'PUT');
+      expect(sentBody, {
+        'title': 'Packing reminders (updated)',
+        'content': 'Bring sunscreen and a hat',
+        'category': 'Logistics',
+      });
+      expect(note.title, 'Packing reminders (updated)');
+    });
+
+    test('always sends content, even blank, so it can be cleared', () async {
+      Map<String, dynamic>? sentBody;
+      final api = _api(
+        MockClient((request) async {
+          sentBody = jsonDecode(request.body) as Map<String, dynamic>;
+          return _json({
+            'note': {'id': 7, 'trip_id': 20, 'title': 'Packing reminders'},
+          });
+        }),
+      );
+
+      await api.updateNote('20', 7, title: 'Packing reminders');
+
+      expect(sentBody, {'title': 'Packing reminders', 'content': ''});
+    });
+
+    test('a 404 (note not found) surfaces as an exception', () async {
+      final api = _api(
+        MockClient((request) async => _json({'error': 'Note not found'}, 404)),
+      );
+
+      expect(
+        api.updateNote('20', 999, title: 'x'),
+        throwsA(isA<ServerException>()),
+      );
+    });
+
+    test('a 403 (no edit permission) surfaces as an exception', () async {
+      final api = _api(
+        MockClient((request) async => _json({'error': 'No permission'}, 403)),
+      );
+
+      expect(
+        api.updateNote('20', 7, title: 'x'),
+        throwsA(isA<ForbiddenException>()),
+      );
+    });
+  });
+
+  group('deleteNote', () {
+    test('DELETEs the note-scoped endpoint', () async {
+      Uri? requestedUri;
+      String? method;
+      final api = _api(
+        MockClient((request) async {
+          requestedUri = request.url;
+          method = request.method;
+          return _json({'success': true});
+        }),
+      );
+
+      await api.deleteNote('20', 7);
+
+      expect(requestedUri?.path, '/api/trips/20/collab/notes/7');
+      expect(method, 'DELETE');
+    });
+
+    test('a 404 (already deleted) surfaces as an exception', () async {
+      final api = _api(
+        MockClient((request) async => _json({'error': 'Note not found'}, 404)),
+      );
+
+      expect(api.deleteNote('20', 999), throwsA(isA<ServerException>()));
+    });
+  });
 }

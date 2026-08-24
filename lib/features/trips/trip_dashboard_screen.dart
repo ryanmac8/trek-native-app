@@ -132,8 +132,11 @@ class _PlacesPreviewTab extends StatelessWidget {
 /// [createNote]) opens a dialog for the note's title, content, and
 /// category, then creates it optimistically — a note created while
 /// offline stays queued and syncs on the next refresh, the same shape as
-/// `TodoRepository.createItem`. Editing, pinning, file attachments, polls,
-/// chat, and membership remain unbuilt for issue #13.
+/// `TodoRepository.createItem`. Each row's overflow menu edits or deletes
+/// that note the same optimistic way — an edit/delete made while offline
+/// stays queued and retries on the next refresh instead of being lost or
+/// blocking the UI. Pinning, file attachments, polls, chat, and membership
+/// remain unbuilt for issue #13.
 class _NotesTab extends ConsumerStatefulWidget {
   const _NotesTab({super.key, required this.tripId});
 
@@ -183,9 +186,9 @@ class _NotesTabState extends ConsumerState<_NotesTab> {
   }
 
   Future<void> createNote() async {
-    final result = await showDialog<_NewCollabNote>(
+    final result = await showDialog<_CollabNoteFormResult>(
       context: context,
-      builder: (context) => const _CreateNoteDialog(),
+      builder: (context) => const _NoteFormDialog(),
     );
     if (result == null) return;
 
@@ -207,6 +210,84 @@ class _NotesTabState extends ConsumerState<_NotesTab> {
       );
     } on ApiException catch (e) {
       if (!mounted) return;
+      AppMessenger.showError(e.message);
+    }
+  }
+
+  Future<void> _editNote(CollabNote note) async {
+    final result = await showDialog<_CollabNoteFormResult>(
+      context: context,
+      builder: (context) => _NoteFormDialog(initial: note),
+    );
+    if (result == null) return;
+
+    try {
+      final updated = await ref
+          .read(collabRepositoryProvider)
+          .updateNote(
+            widget.tripId,
+            note,
+            title: result.title,
+            content: result.content,
+            category: result.category,
+          );
+      if (!mounted) return;
+      setState(() {
+        _notes = [
+          for (final existing in _notes ?? const <CollabNote>[])
+            if (existing.localId == note.localId) updated else existing,
+        ];
+      });
+      AppMessenger.showSuccess(
+        updated.needsSync
+            ? '"${updated.title}" saved — will sync once you\'re back online.'
+            : '"${updated.title}" updated.',
+      );
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      AppMessenger.showError(e.message);
+    }
+  }
+
+  Future<void> _deleteNote(CollabNote note) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete note?'),
+        content: Text(
+          '"${note.title}" will be deleted for everyone on this trip.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    final previous = _notes;
+    setState(() {
+      _notes = [
+        for (final existing in previous ?? const <CollabNote>[])
+          if (existing.localId != note.localId) existing,
+      ];
+    });
+
+    try {
+      await ref.read(collabRepositoryProvider).deleteNote(widget.tripId, note);
+      if (!mounted) return;
+      AppMessenger.showSuccess(
+        note.isPending ? 'Note discarded.' : '"${note.title}" deleted.',
+      );
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() => _notes = previous); // roll back a real rejection
       AppMessenger.showError(e.message);
     }
   }
@@ -255,17 +336,40 @@ class _NotesTabState extends ConsumerState<_NotesTab> {
         itemCount: cached.length,
         itemBuilder: (context, index) {
           final note = cached[index];
+          final syncing = note.isPending || note.needsSync;
           return AppListRow(
             leading: note.pinned ? const Icon(Icons.push_pin) : null,
             title: note.title,
-            subtitle: note.isPending
+            subtitle: syncing
                 ? 'Syncing…'
                 : [
                     if (note.category != null) note.category!,
                     if (note.content != null && note.content!.isNotEmpty)
                       note.content!,
                   ].join(' · '),
-            trailing: note.isPending ? const Icon(Icons.sync) : null,
+            onTap: () => _editNote(note),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (syncing) const Icon(Icons.sync),
+                PopupMenuButton<_NoteRowAction>(
+                  onSelected: (action) => switch (action) {
+                    _NoteRowAction.edit => _editNote(note),
+                    _NoteRowAction.delete => _deleteNote(note),
+                  },
+                  itemBuilder: (context) => const [
+                    PopupMenuItem(
+                      value: _NoteRowAction.edit,
+                      child: Text('Edit'),
+                    ),
+                    PopupMenuItem(
+                      value: _NoteRowAction.delete,
+                      child: Text('Delete'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           );
         },
       ),
@@ -273,26 +377,43 @@ class _NotesTabState extends ConsumerState<_NotesTab> {
   }
 }
 
-class _NewCollabNote {
-  const _NewCollabNote({required this.title, this.content, this.category});
+enum _NoteRowAction { edit, delete }
+
+class _CollabNoteFormResult {
+  const _CollabNoteFormResult({
+    required this.title,
+    this.content,
+    this.category,
+  });
 
   final String title;
   final String? content;
   final String? category;
 }
 
-class _CreateNoteDialog extends StatefulWidget {
-  const _CreateNoteDialog();
+/// Title/content/category form shared by create and edit — passing
+/// [initial] pre-fills the fields and switches the labels/button text from
+/// "New note"/"Create" to "Edit note"/"Save".
+class _NoteFormDialog extends StatefulWidget {
+  const _NoteFormDialog({this.initial});
+
+  final CollabNote? initial;
 
   @override
-  State<_CreateNoteDialog> createState() => _CreateNoteDialogState();
+  State<_NoteFormDialog> createState() => _NoteFormDialogState();
 }
 
-class _CreateNoteDialogState extends State<_CreateNoteDialog> {
+class _NoteFormDialogState extends State<_NoteFormDialog> {
   final _formKey = GlobalKey<FormState>();
-  final _titleController = TextEditingController();
-  final _contentController = TextEditingController();
-  final _categoryController = TextEditingController();
+  late final _titleController = TextEditingController(
+    text: widget.initial?.title,
+  );
+  late final _contentController = TextEditingController(
+    text: widget.initial?.content,
+  );
+  late final _categoryController = TextEditingController(
+    text: widget.initial?.category,
+  );
 
   @override
   void dispose() {
@@ -304,8 +425,9 @@ class _CreateNoteDialogState extends State<_CreateNoteDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final isEditing = widget.initial != null;
     return AlertDialog(
-      title: const Text('New note'),
+      title: Text(isEditing ? 'Edit note' : 'New note'),
       content: Form(
         key: _formKey,
         child: Column(
@@ -352,14 +474,14 @@ class _CreateNoteDialogState extends State<_CreateNoteDialog> {
             final content = _contentController.text.trim();
             final category = _categoryController.text.trim();
             Navigator.of(context).pop(
-              _NewCollabNote(
+              _CollabNoteFormResult(
                 title: _titleController.text.trim(),
                 content: content.isEmpty ? null : content,
                 category: category.isEmpty ? null : category,
               ),
             );
           },
-          child: const Text('Create'),
+          child: Text(isEditing ? 'Save' : 'Create'),
         ),
       ],
     );

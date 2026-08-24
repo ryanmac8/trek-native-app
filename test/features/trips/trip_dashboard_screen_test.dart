@@ -292,5 +292,171 @@ void main() {
 
       expect(find.text('A title is required.'), findsOneWidget);
     });
+
+    testWidgets('editing a note updates it in place', (tester) async {
+      await _pumpDashboard(
+        tester,
+        collabHttpClient: MockClient((request) async {
+          if (request.method == 'PUT') {
+            return _json({
+              'note': {
+                'id': 1,
+                'trip_id': 'trip-1',
+                'title': 'Bring sunscreen and a hat',
+              },
+            });
+          }
+          return _json({
+            'notes': [
+              {'id': 1, 'trip_id': 'trip-1', 'title': 'Bring sunscreen'},
+            ],
+          });
+        }),
+      );
+      await tester.tap(find.text('Notes'));
+      await tester.pumpAndSettle();
+      expect(find.text('Bring sunscreen'), findsOneWidget);
+
+      await tester.tap(find.byIcon(Icons.more_vert));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Edit'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Edit note'), findsOneWidget);
+      await tester.enterText(
+        find.byType(TextFormField).first,
+        'Bring sunscreen and a hat',
+      );
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Bring sunscreen and a hat'), findsOneWidget);
+      expect(find.text('Bring sunscreen'), findsNothing);
+    });
+
+    testWidgets(
+      'a note edited while offline shows as syncing and keeps the edit',
+      (tester) async {
+        await _pumpDashboard(
+          tester,
+          collabHttpClient: MockClient((request) async {
+            if (request.method == 'PUT') {
+              throw http.ClientException('Connection refused');
+            }
+            return _json({
+              'notes': [
+                {'id': 1, 'trip_id': 'trip-1', 'title': 'Bring sunscreen'},
+              ],
+            });
+          }),
+        );
+        await tester.tap(find.text('Notes'));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byIcon(Icons.more_vert));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Edit'));
+        await tester.pumpAndSettle();
+        await tester.enterText(
+          find.byType(TextFormField).first,
+          'Edited offline',
+        );
+        await tester.tap(find.text('Save'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Edited offline'), findsOneWidget);
+        expect(find.text('Syncing…'), findsOneWidget);
+      },
+    );
+
+    testWidgets('deleting a note (after confirming) removes it from the list', (
+      tester,
+    ) async {
+      await _pumpDashboard(
+        tester,
+        collabHttpClient: MockClient((request) async {
+          if (request.method == 'DELETE') {
+            return _json({'success': true});
+          }
+          return _json({
+            'notes': [
+              {'id': 1, 'trip_id': 'trip-1', 'title': 'Bring sunscreen'},
+            ],
+          });
+        }),
+      );
+      await tester.tap(find.text('Notes'));
+      await tester.pumpAndSettle();
+      expect(find.text('Bring sunscreen'), findsOneWidget);
+
+      await tester.tap(find.byIcon(Icons.more_vert));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Delete'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Delete note?'), findsOneWidget);
+      await tester.tap(find.text('Delete'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Bring sunscreen'), findsNothing);
+      expect(find.text('No notes yet.'), findsOneWidget);
+    });
+
+    testWidgets('canceling the delete confirmation keeps the note', (
+      tester,
+    ) async {
+      await _pumpDashboard(
+        tester,
+        collabHttpClient: MockClient(
+          (request) async => _json({
+            'notes': [
+              {'id': 1, 'trip_id': 'trip-1', 'title': 'Bring sunscreen'},
+            ],
+          }),
+        ),
+      );
+      await tester.tap(find.text('Notes'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byIcon(Icons.more_vert));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Delete'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Bring sunscreen'), findsOneWidget);
+    });
+
+    testWidgets(
+      'a note deleted while offline disappears immediately and stays queued',
+      (tester) async {
+        await _pumpDashboard(
+          tester,
+          collabHttpClient: MockClient((request) async {
+            if (request.method == 'DELETE') {
+              throw http.ClientException('Connection refused');
+            }
+            return _json({
+              'notes': [
+                {'id': 1, 'trip_id': 'trip-1', 'title': 'Bring sunscreen'},
+              ],
+            });
+          }),
+        );
+        await tester.tap(find.text('Notes'));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byIcon(Icons.more_vert));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Delete'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Delete'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Bring sunscreen'), findsNothing);
+        expect(find.text('No notes yet.'), findsOneWidget);
+      },
+    );
   });
 }

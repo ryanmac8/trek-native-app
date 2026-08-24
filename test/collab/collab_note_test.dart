@@ -89,6 +89,8 @@ void main() {
         color: '#6366f1',
         pinned: true,
         authorUsername: 'alex',
+        needsSync: true,
+        pendingDelete: true,
       );
 
       final restored = CollabNote.fromCacheJson(note.toCacheJson());
@@ -102,6 +104,8 @@ void main() {
       expect(restored.color, note.color);
       expect(restored.pinned, note.pinned);
       expect(restored.authorUsername, note.authorUsername);
+      expect(restored.needsSync, note.needsSync);
+      expect(restored.pendingDelete, note.pendingDelete);
     });
 
     test('a still-pending note round-trips with a null id', () {
@@ -125,6 +129,57 @@ void main() {
       final restored = CollabNote.fromCacheJson(withoutKey);
 
       expect(restored.pinned, isFalse);
+    });
+
+    test('needsSync/pendingDelete default to false when absent from older '
+        'cache data', () {
+      const note = CollabNote(
+        id: 5,
+        localId: 'server-5',
+        tripId: '20',
+        title: 'Packing reminders',
+      );
+      final withoutKeys = note.toCacheJson()
+        ..remove('needs_sync')
+        ..remove('pending_delete');
+
+      final restored = CollabNote.fromCacheJson(withoutKeys);
+
+      expect(restored.needsSync, isFalse);
+      expect(restored.pendingDelete, isFalse);
+    });
+  });
+
+  group('copyWith', () {
+    test('toggles needsSync/pendingDelete without touching other fields', () {
+      const note = CollabNote(
+        id: 5,
+        localId: 'server-5',
+        tripId: '20',
+        title: 'Packing reminders',
+      );
+
+      final tombstoned = note.copyWith(pendingDelete: true);
+
+      expect(tombstoned.pendingDelete, isTrue);
+      expect(tombstoned.needsSync, isFalse);
+      expect(tombstoned.title, note.title);
+      expect(tombstoned.id, note.id);
+    });
+
+    test('omitted fields keep their previous value', () {
+      const note = CollabNote(
+        id: 5,
+        localId: 'server-5',
+        tripId: '20',
+        title: 'Packing reminders',
+        needsSync: true,
+      );
+
+      final restored = note.copyWith(pendingDelete: false);
+
+      expect(restored.needsSync, isTrue);
+      expect(restored.pendingDelete, isFalse);
     });
   });
 }

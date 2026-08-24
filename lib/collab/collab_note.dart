@@ -18,6 +18,11 @@
 /// a stable client-generated key that survives that transition — used to
 /// find and replace the pending entry in the local cache once the create
 /// syncs, the same shape as [TodoItem].
+///
+/// [needsSync] and [pendingDelete] track an already-synced note's own
+/// offline-write queue (see [CollabRepository.updateNote] and
+/// [CollabRepository.deleteNote]) — distinct from [isPending], which only
+/// ever applies to a note that has never reached the server at all.
 class CollabNote {
   const CollabNote({
     this.id,
@@ -29,6 +34,8 @@ class CollabNote {
     this.color,
     this.pinned = false,
     this.authorUsername,
+    this.needsSync = false,
+    this.pendingDelete = false,
   });
 
   final int? id;
@@ -40,11 +47,29 @@ class CollabNote {
   final String? color;
   final bool pinned;
   final String? authorUsername;
+  final bool needsSync;
+  final bool pendingDelete;
 
   /// True for a note created locally that hasn't been confirmed by the
   /// server yet — either still queued (offline) or its create request is
   /// in flight. See [CollabRepository.createNote].
   bool get isPending => id == null;
+
+  CollabNote copyWith({bool? needsSync, bool? pendingDelete}) {
+    return CollabNote(
+      id: id,
+      localId: localId,
+      tripId: tripId,
+      title: title,
+      content: content,
+      category: category,
+      color: color,
+      pinned: pinned,
+      authorUsername: authorUsername,
+      needsSync: needsSync ?? this.needsSync,
+      pendingDelete: pendingDelete ?? this.pendingDelete,
+    );
+  }
 
   factory CollabNote.fromJson(
     Map<String, dynamic> json, {
@@ -73,7 +98,7 @@ class CollabNote {
   /// Round-trips a [CollabNote] through the local cache (see
   /// `PreferencesCollabLocalStore`) — unlike [fromJson]/the real API shape,
   /// this must also carry [id] being absent (a still-pending note) and the
-  /// client-generated [localId].
+  /// client-generated [localId], plus [needsSync]/[pendingDelete].
   Map<String, dynamic> toCacheJson() => {
     'id': id,
     'local_id': localId,
@@ -84,6 +109,8 @@ class CollabNote {
     'color': color,
     'pinned': pinned,
     'author_username': authorUsername,
+    'needs_sync': needsSync,
+    'pending_delete': pendingDelete,
   };
 
   factory CollabNote.fromCacheJson(Map<String, dynamic> json) {
@@ -97,6 +124,8 @@ class CollabNote {
       color: json['color'] as String?,
       pinned: json['pinned'] as bool? ?? false,
       authorUsername: json['author_username'] as String?,
+      needsSync: json['needs_sync'] as bool? ?? false,
+      pendingDelete: json['pending_delete'] as bool? ?? false,
     );
   }
 }

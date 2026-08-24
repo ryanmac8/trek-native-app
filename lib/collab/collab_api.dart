@@ -48,4 +48,39 @@ class CollabApi {
       tripId: tripId,
     );
   }
+
+  /// `PUT /api/trips/:tripId/collab/notes/:id`. Confirmed against
+  /// `updateNote` in `collabService.ts`: [title] and [category] use
+  /// `COALESCE`, so the server silently keeps the old value if either is
+  /// sent blank — but [content] checks for the field being present at all,
+  /// so it's always sent (even blank) to make clearing it possible, the
+  /// one field this slice's edit form can actually clear.
+  Future<CollabNote> updateNote(
+    String tripId,
+    int noteId, {
+    required String title,
+    String? content,
+    String? category,
+  }) async {
+    final body = <String, dynamic>{
+      'title': title,
+      'content': content ?? '',
+      if (category != null && category.isNotEmpty) 'category': category,
+    };
+    final response =
+        await _apiClient.put(
+              '/api/trips/$tripId/collab/notes/$noteId',
+              body: body,
+            )
+            as Map<String, dynamic>;
+    return CollabNote.fromJson(
+      response['note'] as Map<String, dynamic>,
+      tripId: tripId,
+    );
+  }
+
+  /// `DELETE /api/trips/:tripId/collab/notes/:id`.
+  Future<void> deleteNote(String tripId, int noteId) async {
+    await _apiClient.delete('/api/trips/$tripId/collab/notes/$noteId');
+  }
 }
