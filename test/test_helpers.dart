@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:trek/auth/session_token.dart';
 import 'package:trek/auth/token_storage.dart';
 import 'package:trek/config/server_config.dart';
+import 'package:trek/share/share_link.dart';
+import 'package:trek/share/share_local_store.dart';
 
 /// Builds a syntactically-valid, unsigned JWT string for tests — Trek's
 /// backend is the only thing that verifies the signature; the client only
@@ -62,4 +64,26 @@ class InMemoryServerConfigStorage implements ServerConfigStorage {
 
   @override
   Future<void> clear() async => _config = null;
+}
+
+/// In-memory [ShareLocalStore] fake — avoids the `shared_preferences`
+/// platform channel in repository tests. Keyed per trip id, like the real
+/// store; holds at most one [ShareLink] per trip.
+class InMemoryShareLocalStore implements ShareLocalStore {
+  InMemoryShareLocalStore({Map<String, ShareLink> initial = const {}})
+    : _linkByTripId = Map.of(initial);
+
+  final Map<String, ShareLink> _linkByTripId;
+
+  @override
+  Future<ShareLink?> read(String tripId) async => _linkByTripId[tripId];
+
+  @override
+  Future<void> write(String tripId, ShareLink? link) async {
+    if (link == null) {
+      _linkByTripId.remove(tripId);
+    } else {
+      _linkByTripId[tripId] = link;
+    }
+  }
 }

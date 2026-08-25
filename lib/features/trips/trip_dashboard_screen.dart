@@ -2,10 +2,13 @@ import 'package:flutter/material.dart';
 
 import '../../design/app_spacing.dart';
 import '../../design/place_category_colors.dart';
+import 'share_screen.dart';
 
 /// Per-trip shell: a bottom tab bar switching between the day/place/budget/
 /// packing/todo sections the issue #2 nav structure calls for. Every tab
 /// is a placeholder — none of those data models exist yet (issues #4–#9).
+/// The share icon (issue #14) opens [ShareScreen], not a tab — sharing is
+/// a trip-level setting, not day-to-day trip content.
 class TripDashboardScreen extends StatefulWidget {
   const TripDashboardScreen({super.key, required this.tripId});
 
@@ -29,7 +32,20 @@ class _TripDashboardScreenState extends State<TripDashboardScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('Trip ${widget.tripId}')),
+      appBar: AppBar(
+        title: Text('Trip ${widget.tripId}'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.share),
+            tooltip: 'Share trip',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => ShareScreen(tripId: widget.tripId),
+              ),
+            ),
+          ),
+        ],
+      ),
       body: IndexedStack(
         index: _tabIndex,
         children: [
