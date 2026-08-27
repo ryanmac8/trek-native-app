@@ -1,6 +1,9 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../accommodations/accommodations_api.dart';
+import '../accommodations/accommodations_local_store.dart';
+import '../accommodations/accommodations_repository.dart';
 import '../auth/auth_service.dart';
 import '../auth/token_storage.dart';
 import '../config/server_config.dart';
@@ -52,5 +55,41 @@ final appRouterProvider = Provider<GoRouter>((ref) {
   return buildAppRouter(
     authService: ref.watch(authServiceProvider),
     serverConfigStorage: ref.watch(serverConfigStorageProvider),
+  );
+});
+
+/// Authenticated client for the rest of the API — attaches a bearer token
+/// via [AuthService.currentAccessToken]. A 401 clears the local session via
+/// [AuthService.handleUnauthorized] (there's no refresh flow to retry
+/// against — see its doc comment); a non-blocking "reconnect" UX for that
+/// case is a follow-up, not this feature's job. This is the app's first
+/// authenticated client — the earlier features to need one aren't merged.
+final apiClientProvider = Provider<ApiClient>((ref) {
+  final authService = ref.watch(authServiceProvider);
+  return ApiClient(
+    getBaseUrl: ref.watch(serverConfigResolverProvider).resolveBaseUrl,
+    getAccessToken: () => authService.currentAccessToken,
+    onUnauthorized: authService.handleUnauthorized,
+  );
+});
+
+final accommodationsApiProvider = Provider<AccommodationsApi>((ref) {
+  return AccommodationsApi(apiClient: ref.watch(apiClientProvider));
+});
+
+/// Local (non-secure) cache of each trip's accommodations — see
+/// docs/offline-first.md. A minimal, scoped-to-accommodations stand-in for
+/// the full local-persistence mechanism issue #21 will decide on for the
+/// whole data model.
+final accommodationsLocalStoreProvider = Provider<AccommodationsLocalStore>(
+  (ref) => PreferencesAccommodationsLocalStore(),
+);
+
+final accommodationsRepositoryProvider = Provider<AccommodationsRepository>((
+  ref,
+) {
+  return AccommodationsRepository(
+    accommodationsApi: ref.watch(accommodationsApiProvider),
+    localStore: ref.watch(accommodationsLocalStoreProvider),
   );
 });
