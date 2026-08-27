@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:trek/accommodations/accommodation.dart';
+import 'package:trek/accommodations/accommodations_local_store.dart';
 import 'package:trek/auth/session_token.dart';
 import 'package:trek/auth/token_storage.dart';
 import 'package:trek/config/server_config.dart';
@@ -62,4 +64,25 @@ class InMemoryServerConfigStorage implements ServerConfigStorage {
 
   @override
   Future<void> clear() async => _config = null;
+}
+
+/// In-memory [AccommodationsLocalStore] fake — avoids the
+/// `shared_preferences` platform channel in widget/repository tests. Keyed
+/// per trip id, like the real store.
+class InMemoryAccommodationsLocalStore implements AccommodationsLocalStore {
+  InMemoryAccommodationsLocalStore({
+    Map<String, List<Accommodation>> initial = const {},
+  }) : _byTripId = {
+         for (final entry in initial.entries) entry.key: List.of(entry.value),
+       };
+
+  final Map<String, List<Accommodation>> _byTripId;
+
+  @override
+  Future<List<Accommodation>> read(String tripId) async =>
+      List.of(_byTripId[tripId] ?? const []);
+
+  @override
+  Future<void> write(String tripId, List<Accommodation> accommodations) async =>
+      _byTripId[tripId] = List.of(accommodations);
 }
