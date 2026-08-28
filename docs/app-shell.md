@@ -85,7 +85,7 @@ A native launch image can only ever be static (an OS-level constraint on both iO
 - **`ServerSetupScreen`** — collects the public server URL (required) and an optional private/LAN URL + trusted Wi-Fi network names, via `ServerConfig.validateUrl`. Writes to `ServerConfigStorage` and lets the redirect carry the user to `/login`.
 - **`LoginScreen`** / **`MfaScreen`** — call `AuthService.login` / `verifyMfaLogin` directly; an `ApiException` is caught and shown inline (including `NetworkException` when offline — see [offline-first.md](offline-first.md)). Neither screen navigates on success; the router's `refreshListenable` does that.
 - **`TripListScreen`** — empty state (no trip data model yet) plus a working logout action.
-- **`TripDashboardScreen`** — bottom `NavigationBar` with the five sections issue #2 calls for (Days/Places/Budget/Packing/Todos), each a placeholder. The Places tab also previews every `PlaceCategory` swatch as a visual check of the design tokens.
+- **`TripDashboardScreen`** — bottom `NavigationBar` with the sections issue #2 calls for (Days/Places/Budget/Packing/Todos/Bookings). All are placeholders except Bookings, which lists a trip's reservations offline-first (see [reservations.md](reservations.md)). The Places tab previews every `PlaceCategory` swatch as a visual check of the design tokens.
 
 ## Deferred
 
