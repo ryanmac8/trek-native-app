@@ -29,6 +29,7 @@ An authenticated `ApiClient` (bearer token + 401 handling wired to `AuthService.
 | `/login/mfa` | `MfaScreen` (reached with the `mfaToken` as `extra`) |
 | `/trips` | `TripListScreen` |
 | `/trips/:tripId` | `TripDashboardScreen` |
+| `/notifications` | `NotificationsScreen` (see [notifications.md](notifications.md)) |
 
 `redirect` gates navigation on two local (never network) reads, evaluated on every navigation:
 
@@ -84,7 +85,7 @@ A native launch image can only ever be static (an OS-level constraint on both iO
 
 - **`ServerSetupScreen`** — collects the public server URL (required) and an optional private/LAN URL + trusted Wi-Fi network names, via `ServerConfig.validateUrl`. Writes to `ServerConfigStorage` and lets the redirect carry the user to `/login`.
 - **`LoginScreen`** / **`MfaScreen`** — call `AuthService.login` / `verifyMfaLogin` directly; an `ApiException` is caught and shown inline (including `NetworkException` when offline — see [offline-first.md](offline-first.md)). Neither screen navigates on success; the router's `refreshListenable` does that.
-- **`TripListScreen`** — empty state (no trip data model yet) plus a working logout action.
+- **`TripListScreen`** — empty state (no trip data model yet) plus a working logout action and an app-bar bell that opens `/notifications`.
 - **`TripDashboardScreen`** — bottom `NavigationBar` with the five sections issue #2 calls for (Days/Places/Budget/Packing/Todos), each a placeholder. The Places tab also previews every `PlaceCategory` swatch as a visual check of the design tokens.
 
 ## Deferred
