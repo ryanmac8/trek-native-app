@@ -361,8 +361,8 @@ class _StopPickerFieldState extends ConsumerState<_StopPickerField> {
         if (results != null && results.isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(top: AppSpacing.xs),
-            child: AppCard(
-              padding: EdgeInsets.zero,
+            child: Card(
+              margin: EdgeInsets.zero,
               child: Column(
                 children: [
                   for (final place in results)
@@ -545,13 +545,9 @@ class _AirportSearchViewState extends ConsumerState<_AirportSearchView> {
 
     return [
       for (final airport in airports)
-        AppCard(
-          padding: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.md,
-            vertical: AppSpacing.sm,
-          ),
+        Card(
+          margin: const EdgeInsets.only(bottom: AppSpacing.sm),
           child: ListTile(
-            contentPadding: EdgeInsets.zero,
             leading: CircleAvatar(child: Text(airport.iata)),
             title: Text(airport.name),
             subtitle: Text('${airport.city}, ${airport.country}'),
