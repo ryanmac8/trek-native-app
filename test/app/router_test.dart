@@ -1,5 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+import 'package:trek/account/account_api.dart';
+import 'package:trek/account/account_repository.dart';
+import 'package:trek/app/providers.dart';
 import 'package:trek/app/router.dart';
 import 'package:trek/auth/auth_service.dart';
 import 'package:trek/config/server_config.dart';
@@ -91,5 +97,43 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Trips'), findsOneWidget);
+  });
+
+  testWidgets('an authenticated user can reach /settings', (tester) async {
+    await serverConfigStorage.write(
+      const ServerConfig(publicUrl: 'https://trek.example.com'),
+    );
+    authService.isAuthenticated.value = true;
+
+    final router = buildAppRouter(
+      authService: authService,
+      serverConfigStorage: serverConfigStorage,
+      initialLocation: '/settings',
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          serverConfigStorageProvider.overrideWithValue(serverConfigStorage),
+          accountRepositoryProvider.overrideWithValue(
+            AccountRepository(
+              accountApi: AccountApi(
+                apiClient: ApiClient(
+                  baseUrl: 'https://trek.example.com',
+                  httpClient: MockClient(
+                    (_) async => throw http.ClientException('offline'),
+                  ),
+                ),
+              ),
+              localStore: InMemoryAccountLocalStore(),
+            ),
+          ),
+        ],
+        child: MaterialApp.router(routerConfig: router),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Settings'), findsOneWidget);
+    expect(find.text('Server'), findsOneWidget);
   });
 }

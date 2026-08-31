@@ -5,6 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:trek/account/account_api.dart';
+import 'package:trek/account/account_repository.dart';
 import 'package:trek/app/providers.dart';
 import 'package:trek/auth/auth_service.dart';
 import 'package:trek/config/server_config.dart';
@@ -13,7 +15,7 @@ import 'package:trek/network/api_client.dart';
 import '../../test_helpers.dart';
 
 void main() {
-  testWidgets('shows an empty state and logs out back to the login screen', (
+  testWidgets('shows an empty state and opens settings from the app bar', (
     tester,
   ) async {
     final authService = AuthService(
@@ -38,6 +40,23 @@ void main() {
               ),
             ),
           ),
+          accountRepositoryProvider.overrideWithValue(
+            AccountRepository(
+              accountApi: AccountApi(
+                apiClient: ApiClient(
+                  baseUrl: 'https://trek.example.com',
+                  httpClient: MockClient(
+                    (_) async => http.Response(
+                      jsonEncode(fakeMeResponse(username: 'grace')),
+                      200,
+                      headers: {'content-type': 'application/json'},
+                    ),
+                  ),
+                ),
+              ),
+              localStore: InMemoryAccountLocalStore(),
+            ),
+          ),
         ],
         child: Consumer(
           builder: (context, ref, _) =>
@@ -49,10 +68,10 @@ void main() {
 
     expect(find.text('No trips yet.'), findsOneWidget);
 
-    await tester.tap(find.byIcon(Icons.logout));
+    await tester.tap(find.byIcon(Icons.settings_outlined));
     await tester.pumpAndSettle();
 
-    expect(find.text('Log in'), findsWidgets);
-    expect(authService.isAuthenticated.value, isFalse);
+    expect(find.text('Settings'), findsOneWidget);
+    expect(find.text('grace'), findsOneWidget);
   });
 }

@@ -1,6 +1,9 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../account/account_api.dart';
+import '../account/account_local_store.dart';
+import '../account/account_repository.dart';
 import '../auth/auth_service.dart';
 import '../auth/token_storage.dart';
 import '../config/server_config.dart';
@@ -27,10 +30,9 @@ final serverConfigResolverProvider = Provider<ServerConfigResolver>((ref) {
   );
 });
 
-/// Unauthenticated client for the `/api/auth/*` endpoints — [AuthService]
-/// wraps this. A separate authenticated client (with a bearer token and
-/// 401 handling wired to [AuthService.handleUnauthorized]) belongs to
-/// whichever feature is the first to need it.
+/// Unauthenticated client for the `/api/auth/*` login/logout endpoints —
+/// [AuthService] wraps this. The authenticated client for the rest of the
+/// API is [apiClientProvider] below.
 final authApiClientProvider = Provider<ApiClient>((ref) {
   return ApiClient(
     getBaseUrl: ref.watch(serverConfigResolverProvider).resolveBaseUrl,
@@ -52,5 +54,38 @@ final appRouterProvider = Provider<GoRouter>((ref) {
   return buildAppRouter(
     authService: ref.watch(authServiceProvider),
     serverConfigStorage: ref.watch(serverConfigStorageProvider),
+  );
+});
+
+/// Authenticated client for the rest of Trek's API — attaches a bearer
+/// token via [AuthService.currentAccessToken] (a purely local read — see
+/// its doc comment) and clears the local session on a 401 via
+/// [AuthService.handleUnauthorized]. There's no refresh flow to retry
+/// against. Added for the settings / account feature, the first on `main`
+/// to need an authenticated client.
+final apiClientProvider = Provider<ApiClient>((ref) {
+  final authService = ref.watch(authServiceProvider);
+  return ApiClient(
+    getBaseUrl: ref.watch(serverConfigResolverProvider).resolveBaseUrl,
+    getAccessToken: () => authService.currentAccessToken,
+    onUnauthorized: authService.handleUnauthorized,
+  );
+});
+
+final accountApiProvider = Provider<AccountApi>((ref) {
+  return AccountApi(apiClient: ref.watch(apiClientProvider));
+});
+
+/// Local (non-secure) cache for the signed-in account — see
+/// docs/offline-first.md. A minimal, feature-scoped stand-in for the full
+/// local-persistence mechanism issue #21 will decide on.
+final accountLocalStoreProvider = Provider<AccountLocalStore>(
+  (ref) => PreferencesAccountLocalStore(),
+);
+
+final accountRepositoryProvider = Provider<AccountRepository>((ref) {
+  return AccountRepository(
+    accountApi: ref.watch(accountApiProvider),
+    localStore: ref.watch(accountLocalStoreProvider),
   );
 });
