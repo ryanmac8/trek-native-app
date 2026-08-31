@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:trek/account/account_local_store.dart';
+import 'package:trek/account/account_models.dart';
 import 'package:trek/auth/session_token.dart';
 import 'package:trek/auth/token_storage.dart';
 import 'package:trek/config/server_config.dart';
@@ -62,4 +64,47 @@ class InMemoryServerConfigStorage implements ServerConfigStorage {
 
   @override
   Future<void> clear() async => _config = null;
+}
+
+/// In-memory [AccountLocalStore] fake — avoids the `shared_preferences`
+/// platform channel in repository/widget tests. A `null` read means
+/// "nothing cached" (never fetched, or cleared on sign-out).
+class InMemoryAccountLocalStore implements AccountLocalStore {
+  InMemoryAccountLocalStore({TrekAccount? initial}) : account = initial;
+
+  TrekAccount? account;
+
+  @override
+  Future<TrekAccount?> read() async => account;
+
+  @override
+  Future<void> write(TrekAccount account) async => this.account = account;
+
+  @override
+  Future<void> clear() async => account = null;
+}
+
+/// A representative `GET /api/auth/me` response body for tests.
+Map<String, dynamic> fakeMeResponse({
+  int id = 1,
+  String username = 'ada',
+  String email = 'ada@example.com',
+  String role = 'user',
+  bool mfaEnabled = false,
+  String? oidcIssuer,
+  String? createdAt = '2025-01-02T03:04:05.000Z',
+}) {
+  return {
+    'user': {
+      'id': id,
+      'username': username,
+      'email': email,
+      'role': role,
+      'avatar_url': 'https://trek.example.com/avatars/$id.png',
+      'oidc_issuer': oidcIssuer,
+      'created_at': createdAt,
+      'mfa_enabled': mfaEnabled,
+      'must_change_password': false,
+    },
+  };
 }

@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
-import '../../app/app_messenger.dart';
-import '../../app/providers.dart';
 import '../../design/widgets/empty_state.dart';
 
 /// Landing screen once a session is active. Trips themselves aren't wired
@@ -18,12 +17,9 @@ class TripListScreen extends ConsumerWidget {
         title: const Text('Trips'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.logout),
-            tooltip: 'Log out',
-            onPressed: () async {
-              await ref.read(authServiceProvider).logout();
-              AppMessenger.showInfo('Logged out.');
-            },
+            icon: const Icon(Icons.settings_outlined),
+            tooltip: 'Settings',
+            onPressed: () => context.push('/settings'),
           ),
         ],
       ),
