@@ -7,9 +7,15 @@ import '../config/server_config.dart';
 import '../config/server_config_resolver.dart';
 import '../config/wifi_network_info.dart';
 import '../network/api_client.dart';
+<<<<<<< HEAD
 import '../notifications/notifications_api.dart';
 import '../notifications/notifications_local_store.dart';
 import '../notifications/notifications_repository.dart';
+=======
+import '../transit/transit_api.dart';
+import '../transit/transit_local_store.dart';
+import '../transit/transit_repository.dart';
+>>>>>>> feature/transit-airport-search
 import 'router.dart';
 
 /// Where the self-hosted server URL is persisted (see
@@ -57,6 +63,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
   );
 });
 
+<<<<<<< HEAD
 /// Authenticated client for the rest of the API — attaches a bearer token
 /// via [AuthService.currentAccessToken] (a purely local read — see its doc
 /// comment) and clears the local session on a 401 via
@@ -64,6 +71,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
 /// against; a non-blocking "reconnect" UX for the cleared-session case is a
 /// follow-up. This is the app's first authenticated client, added for the
 /// notifications inbox.
+=======
+/// Authenticated client for the rest of Trek's API — attaches a bearer
+/// token via [AuthService.currentAccessToken] (a purely local read — see
+/// its doc comment) and clears the local session on a 401 via
+/// [AuthService.handleUnauthorized]. There's no refresh flow to retry
+/// against. Added here for the transit + airport search feature, the first
+/// to need an authenticated client.
+>>>>>>> feature/transit-airport-search
 final apiClientProvider = Provider<ApiClient>((ref) {
   final authService = ref.watch(authServiceProvider);
   return ApiClient(
@@ -73,6 +88,7 @@ final apiClientProvider = Provider<ApiClient>((ref) {
   );
 });
 
+<<<<<<< HEAD
 final notificationsApiProvider = Provider<NotificationsApi>((ref) {
   return NotificationsApi(apiClient: ref.watch(apiClientProvider));
 });
@@ -91,5 +107,22 @@ final notificationsRepositoryProvider = Provider<NotificationsRepository>((
   return NotificationsRepository(
     notificationsApi: ref.watch(notificationsApiProvider),
     localStore: ref.watch(notificationsLocalStoreProvider),
+=======
+final transitApiProvider = Provider<TransitApi>((ref) {
+  return TransitApi(apiClient: ref.watch(apiClientProvider));
+});
+
+/// Local (non-secure) cache for transit + airport search results — see
+/// docs/offline-first.md. A minimal, feature-scoped stand-in for the full
+/// local-persistence mechanism issue #21 will decide on.
+final transitLocalStoreProvider = Provider<TransitLocalStore>(
+  (ref) => PreferencesTransitLocalStore(),
+);
+
+final transitRepositoryProvider = Provider<TransitRepository>((ref) {
+  return TransitRepository(
+    transitApi: ref.watch(transitApiProvider),
+    localStore: ref.watch(transitLocalStoreProvider),
+>>>>>>> feature/transit-airport-search
   );
 });

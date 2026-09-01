@@ -4,27 +4,24 @@ import '../auth/auth_service.dart';
 import '../config/server_config.dart';
 import '../features/auth/login_screen.dart';
 import '../features/auth/mfa_screen.dart';
-import '../features/notifications/notifications_screen.dart';
 import '../features/server_setup/server_setup_screen.dart';
+import '../features/transit/transit_search_screen.dart';
 import '../features/trips/trip_dashboard_screen.dart';
 import '../features/trips/trip_list_screen.dart';
 
-/// Builds the app's [GoRouter], gating navigation on two local (never
-/// network) reads: whether a server has been configured
-/// ([ServerConfigStorage]) and whether a session is active
-/// ([AuthService.isAuthenticated]). Re-evaluated automatically whenever
-/// [AuthService.isAuthenticated] changes (login/logout/token expiry), since
-/// it's passed as `refreshListenable`.
+/// Builds the app's [GoRouter], gating navigation on:
+/// 1. Server configuration ([ServerConfig]) - no server → show setup
+/// 2. Auth state ([AuthService.isAuthenticated]) - not logged in → show login
+/// Re-evaluated automatically as auth state changes.
 GoRouter buildAppRouter({
   required AuthService authService,
-  required ServerConfigStorage serverConfigStorage,
+  required ServerConfig serverConfig,
   String? initialLocation,
 }) {
   return GoRouter(
     initialLocation: initialLocation ?? '/trips',
-    refreshListenable: authService.isAuthenticated,
     redirect: (context, state) async {
-      final hasServer = await serverConfigStorage.read() != null;
+      final hasServer = serverConfig != null;
       final location = state.matchedLocation;
       final onServerSetup = location == '/server-setup';
       final onLogin = location.startsWith('/login');
@@ -45,19 +42,21 @@ GoRouter buildAppRouter({
         path: '/server-setup',
         builder: (context, state) => const ServerSetupScreen(),
       ),
-      GoRoute(path: '/login', builder: (context, state) => const LoginScreen()),
+      GoRoute(
+        path: '/login',
+        builder: (context, state) => const LoginScreen(),
+      ),
       GoRoute(
         path: '/login/mfa',
-        builder: (context, state) =>
-            MfaScreen(mfaToken: state.extra! as String),
+        builder: (context, state) => const MfaScreen(mfaToken: state.extra['mfaToken'] as String),
       ),
       GoRoute(
         path: '/trips',
         builder: (context, state) => const TripListScreen(),
       ),
       GoRoute(
-        path: '/notifications',
-        builder: (context, state) => const NotificationsScreen(),
+        path: '/transit',
+        builder: (context, state) => const TransitSearchScreen(),
       ),
       GoRoute(
         path: '/trips/:tripId',
