@@ -5,6 +5,7 @@ import '../config/server_config.dart';
 import '../features/auth/login_screen.dart';
 import '../features/auth/mfa_screen.dart';
 import '../features/server_setup/server_setup_screen.dart';
+import '../features/weather/weather_screen.dart';
 import '../features/trips/trip_dashboard_screen.dart';
 import '../features/trips/trip_list_screen.dart';
 
@@ -53,6 +54,10 @@ GoRouter buildAppRouter({
       GoRoute(
         path: '/trips',
         builder: (context, state) => const TripListScreen(),
+      ),
+      GoRoute(
+        path: '/weather',
+        builder: (context, state) => const WeatherScreen(),
       ),
       GoRoute(
         path: '/trips/:tripId',
