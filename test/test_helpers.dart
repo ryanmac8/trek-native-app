@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:trek/auth/session_token.dart';
 import 'package:trek/auth/token_storage.dart';
 import 'package:trek/config/server_config.dart';
+import 'package:trek/weather/weather_local_store.dart';
+import 'package:trek/weather/weather_models.dart';
 
 /// Builds a syntactically-valid, unsigned JWT string for tests — Trek's
 /// backend is the only thing that verifies the signature; the client only
@@ -62,4 +64,26 @@ class InMemoryServerConfigStorage implements ServerConfigStorage {
 
   @override
   Future<void> clear() async => _config = null;
+}
+
+/// In-memory [WeatherLocalStore] fake — avoids the `shared_preferences`
+/// platform channel in repository/widget tests. [staleKeys] lets a test mark
+/// specific entries as past their TTL so the offline-fallback path can be
+/// exercised without waiting on a clock.
+class InMemoryWeatherLocalStore implements WeatherLocalStore {
+  final Map<String, WeatherReport> entries = {};
+  final Set<String> staleKeys = {};
+
+  @override
+  Future<CachedWeather?> read(String key) async {
+    final report = entries[key];
+    if (report == null) return null;
+    return CachedWeather(report: report, isFresh: !staleKeys.contains(key));
+  }
+
+  @override
+  Future<void> write(String key, WeatherReport report) async {
+    entries[key] = report;
+    staleKeys.remove(key);
+  }
 }

@@ -7,6 +7,9 @@ import '../config/server_config.dart';
 import '../config/server_config_resolver.dart';
 import '../config/wifi_network_info.dart';
 import '../network/api_client.dart';
+import '../weather/weather_api.dart';
+import '../weather/weather_local_store.dart';
+import '../weather/weather_repository.dart';
 import 'router.dart';
 
 /// Where the self-hosted server URL is persisted (see
@@ -52,5 +55,37 @@ final appRouterProvider = Provider<GoRouter>((ref) {
   return buildAppRouter(
     authService: ref.watch(authServiceProvider),
     serverConfigStorage: ref.watch(serverConfigStorageProvider),
+  );
+});
+
+/// Authenticated client for the rest of Trek's API — attaches a bearer token
+/// via [AuthService.currentAccessToken] (a purely local read) and clears the
+/// local session on a 401 via [AuthService.handleUnauthorized]. There's no
+/// refresh flow to retry against. Added here for the weather feature, the
+/// first to need an authenticated client.
+final apiClientProvider = Provider<ApiClient>((ref) {
+  final authService = ref.watch(authServiceProvider);
+  return ApiClient(
+    getBaseUrl: ref.watch(serverConfigResolverProvider).resolveBaseUrl,
+    getAccessToken: () => authService.currentAccessToken,
+    onUnauthorized: authService.handleUnauthorized,
+  );
+});
+
+final weatherApiProvider = Provider<WeatherApi>((ref) {
+  return WeatherApi(apiClient: ref.watch(apiClientProvider));
+});
+
+/// Local (non-secure) cache for weather lookups — see docs/offline-first.md.
+/// A minimal, feature-scoped stand-in for the full local-persistence
+/// mechanism issue #21 will decide on.
+final weatherLocalStoreProvider = Provider<WeatherLocalStore>(
+  (ref) => PreferencesWeatherLocalStore(),
+);
+
+final weatherRepositoryProvider = Provider<WeatherRepository>((ref) {
+  return WeatherRepository(
+    weatherApi: ref.watch(weatherApiProvider),
+    localStore: ref.watch(weatherLocalStoreProvider),
   );
 });
