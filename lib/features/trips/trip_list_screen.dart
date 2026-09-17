@@ -24,6 +24,16 @@ class TripListScreen extends ConsumerWidget {
             onPressed: () => context.push('/weather'),
           ),
           IconButton(
+            icon: const Icon(Icons.notifications),
+            tooltip: 'Notifications',
+            onPressed: () => context.push('/notifications'),
+          ),
+          IconButton(
+            icon: const Icon(Icons.directions_transit),
+            tooltip: 'Transit',
+            onPressed: () => context.push('/transit'),
+          ),
+          IconButton(
             icon: const Icon(Icons.logout),
             tooltip: 'Log out',
             onPressed: () async {
