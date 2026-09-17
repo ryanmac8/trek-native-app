@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../app/app_messenger.dart';
 import '../../app/providers.dart';
@@ -17,6 +18,11 @@ class TripListScreen extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('Trips'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.map_outlined),
+            tooltip: 'Maps lookup',
+            onPressed: () => context.push('/maps'),
+          ),
           IconButton(
             icon: const Icon(Icons.logout),
             tooltip: 'Log out',
