@@ -6,6 +6,9 @@ import '../auth/token_storage.dart';
 import '../config/server_config.dart';
 import '../config/server_config_resolver.dart';
 import '../config/wifi_network_info.dart';
+import '../maps/maps_api.dart';
+import '../maps/maps_local_store.dart';
+import '../maps/maps_repository.dart';
 import '../network/api_client.dart';
 import 'router.dart';
 
@@ -28,9 +31,8 @@ final serverConfigResolverProvider = Provider<ServerConfigResolver>((ref) {
 });
 
 /// Unauthenticated client for the `/api/auth/*` endpoints — [AuthService]
-/// wraps this. A separate authenticated client (with a bearer token and
-/// 401 handling wired to [AuthService.handleUnauthorized]) belongs to
-/// whichever feature is the first to need it.
+/// wraps this. The authenticated client the rest of the API needs is
+/// [apiClientProvider] below.
 final authApiClientProvider = Provider<ApiClient>((ref) {
   return ApiClient(
     getBaseUrl: ref.watch(serverConfigResolverProvider).resolveBaseUrl,
@@ -45,6 +47,39 @@ final authServiceProvider = Provider<AuthService>((ref) {
   return AuthService(
     apiClient: ref.watch(authApiClientProvider),
     tokenStorage: ref.watch(tokenStorageProvider),
+  );
+});
+
+/// Authenticated client for the rest of Trek's API — attaches a bearer token
+/// via [AuthService.currentAccessToken] (a purely local read — see its doc
+/// comment) and clears the local session on a 401 via
+/// [AuthService.handleUnauthorized]. There's no refresh flow to retry
+/// against. Added here for the maps/geocoding lookup screen, the first place
+/// to need an authenticated client.
+final apiClientProvider = Provider<ApiClient>((ref) {
+  final authService = ref.watch(authServiceProvider);
+  return ApiClient(
+    getBaseUrl: ref.watch(serverConfigResolverProvider).resolveBaseUrl,
+    getAccessToken: () => authService.currentAccessToken,
+    onUnauthorized: authService.handleUnauthorized,
+  );
+});
+
+final mapsApiProvider = Provider<MapsApi>((ref) {
+  return MapsApi(apiClient: ref.watch(apiClientProvider));
+});
+
+/// Local (non-secure) cache for maps/geocoding lookups — see
+/// docs/offline-first.md. A minimal, feature-scoped stand-in for the full
+/// local-persistence mechanism issue #21 will decide on.
+final mapsLocalStoreProvider = Provider<MapsLocalStore>(
+  (ref) => PreferencesMapsLocalStore(),
+);
+
+final mapsRepositoryProvider = Provider<MapsRepository>((ref) {
+  return MapsRepository(
+    mapsApi: ref.watch(mapsApiProvider),
+    localStore: ref.watch(mapsLocalStoreProvider),
   );
 });
 
