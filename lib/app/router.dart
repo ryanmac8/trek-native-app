@@ -7,23 +7,22 @@ import '../features/auth/mfa_screen.dart';
 import '../features/server_setup/server_setup_screen.dart';
 import '../features/trips/trip_dashboard_screen.dart';
 import '../features/trips/trip_list_screen.dart';
+import '../features/weather/weather_screen.dart';
+import '../features/transit/transit_search_screen.dart';
 
-/// Builds the app's [GoRouter], gating navigation on two local (never
-/// network) reads: whether a server has been configured
-/// ([ServerConfigStorage]) and whether a session is active
-/// ([AuthService.isAuthenticated]). Re-evaluated automatically whenever
-/// [AuthService.isAuthenticated] changes (login/logout/token expiry), since
-/// it's passed as `refreshListenable`.
+/// Builds the app's [GoRouter], gating navigation on:
+/// 1. Server configuration ([ServerConfig]) - no server → show setup
+/// 2. Auth state ([AuthService.isAuthenticated]) - not logged in → show login
+/// Re-evaluated automatically as auth state changes.
 GoRouter buildAppRouter({
   required AuthService authService,
-  required ServerConfigStorage serverConfigStorage,
+  required ServerConfig serverConfig,
   String? initialLocation,
 }) {
   return GoRouter(
     initialLocation: initialLocation ?? '/trips',
-    refreshListenable: authService.isAuthenticated,
     redirect: (context, state) async {
-      final hasServer = await serverConfigStorage.read() != null;
+      final hasServer = serverConfig != null;
       final location = state.matchedLocation;
       final onServerSetup = location == '/server-setup';
       final onLogin = location.startsWith('/login');
@@ -44,20 +43,94 @@ GoRouter buildAppRouter({
         path: '/server-setup',
         builder: (context, state) => const ServerSetupScreen(),
       ),
-      GoRoute(path: '/login', builder: (context, state) => const LoginScreen()),
+      GoRoute(
+        path: '/login',
+        builder: (context, state) => const LoginScreen(),
+      ),
       GoRoute(
         path: '/login/mfa',
-        builder: (context, state) =>
-            MfaScreen(mfaToken: state.extra! as String),
+        builder: (context, state) => const MfaScreen(mfaToken: state.extra['mfaToken'] as String),
       ),
       GoRoute(
         path: '/trips',
         builder: (context, state) => const TripListScreen(),
       ),
       GoRoute(
+        path: '/trips/new',
+        builder: (context, state) {
+          ref.invalidate(tripLocalStoreProvider);
+          return _TripNewScreen();
+        },
+      ),
+      GoRoute(
         path: '/trips/:tripId',
-        builder: (context, state) =>
-            TripDashboardScreen(tripId: state.pathParameters['tripId']!),
+        builder: (context, state) {
+          ref.invalidate(tripLocalStoreProvider);
+          return TripDashboardScreen(tripId: state.pathParameters['tripId']!);
+        },
+        extra: {
+          'trips': Library(tripLocalStoreProvider),
+        },
+      ),
+      GoRoute(
+        path: '/trips/:tripId/days/new',
+        builder: (context, state) {
+          ref.invalidate(tripLocalStoreProvider);
+          return _DayNewScreen(tripId: state.pathParameters['tripId']!);
+        },
+      ),
+      GoRoute(
+        path: '/trips/:tripId/days/:dayId',
+        builder: (context, state) {
+          ref.invalidate(tripLocalStoreProvider);
+          return _DayEditScreen(
+            tripId: state.pathParameters['tripId']!,
+            dayId: state.pathParameters['dayId']!,
+          );
+        },
+      ),
+      GoRoute(
+        path: '/weather',
+        builder: (context, state) {
+          ref.invalidate(tripLocalStoreProvider);
+          ref.invalidate(weatherRepositoryProvider);
+          ref.invalidate(weatherLocalStoreProvider);
+          ref.invalidate(notificationsRepositoryProvider);
+          return const WeatherScreen();
+        },
+      ),
+      GoRoute(
+        path: '/transit',
+        builder: (context, state) {
+          ref.invalidate(tripLocalStoreProvider);
+          ref.invalidate(transitRepositoryProvider);
+          ref.invalidate(transitLocalStoreProvider);
+          return const TransitSearchScreen();
+        },
+      ),
+      GoRoute(
+        path: '/notifications',
+        builder: (context, state) {
+          final notifications = state.extra['notifications'] as List<Map<String, dynamic>>?;
+          ref.invalidate(notificationsRepositoryProvider);
+          return NotificationsScreen(notifications: notifications ?? []);
+        },
+        extra: {
+          'notifications': Library(
+            <WeatherRepository>[weatherRepositoryProvider],
+            <NotificationsRepository>[notificationsRepositoryProvider],
+          ),
+        },
+      ),
+      GoRoute(
+        path: '/trips/:tripId',
+        builder: (context, state) {
+          ref.invalidate(tripLocalStoreProvider);
+          return TripDashboardScreen(tripId: state.pathParameters['tripId']!);
+        },
+        extra: {
+          'trips': Library(tripLocalStoreProvider),
+        },
       ),
     ],
   );
