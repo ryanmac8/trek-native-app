@@ -56,17 +56,63 @@ GoRouter buildAppRouter({
         builder: (context, state) => const TripListScreen(),
       ),
       GoRoute(
+        path: '/trips/new',
+        builder: (context, state) {
+          ref.invalidate(tripLocalStoreProvider);
+          return _TripNewScreen();
+        },
+      ),
+      GoRoute(
+        path: '/trips/:tripId',
+        builder: (context, state) {
+          ref.invalidate(tripLocalStoreProvider);
+          return TripDashboardScreen(tripId: state.pathParameters['tripId']!);
+        },
+        extra: {
+          'trips': Library(tripLocalStoreProvider),
+        },
+      ),
+      GoRoute(
+        path: '/trips/:tripId/days/new',
+        builder: (context, state) {
+          ref.invalidate(tripLocalStoreProvider);
+          return _DayNewScreen(tripId: state.pathParameters['tripId']!);
+        },
+      ),
+      GoRoute(
+        path: '/trips/:tripId/days/:dayId',
+        builder: (context, state) {
+          ref.invalidate(tripLocalStoreProvider);
+          return _DayEditScreen(
+            tripId: state.pathParameters['tripId']!,
+            dayId: state.pathParameters['dayId']!,
+          );
+        },
+      ),
+      GoRoute(
         path: '/weather',
-        builder: (context, state) => const WeatherScreen(),
+        builder: (context, state) {
+          ref.invalidate(tripLocalStoreProvider);
+          ref.invalidate(weatherRepositoryProvider);
+          ref.invalidate(weatherLocalStoreProvider);
+          ref.invalidate(notificationsRepositoryProvider);
+          return const WeatherScreen();
+        },
       ),
       GoRoute(
         path: '/transit',
-        builder: (context, state) => const TransitSearchScreen(),
+        builder: (context, state) {
+          ref.invalidate(tripLocalStoreProvider);
+          ref.invalidate(transitRepositoryProvider);
+          ref.invalidate(transitLocalStoreProvider);
+          return const TransitSearchScreen();
+        },
       ),
       GoRoute(
         path: '/notifications',
         builder: (context, state) {
           final notifications = state.extra['notifications'] as List<Map<String, dynamic>>?;
+          ref.invalidate(notificationsRepositoryProvider);
           return NotificationsScreen(notifications: notifications ?? []);
         },
         extra: {
@@ -78,8 +124,13 @@ GoRouter buildAppRouter({
       ),
       GoRoute(
         path: '/trips/:tripId',
-        builder: (context, state) =>
-            TripDashboardScreen(tripId: state.pathParameters['tripId']!),
+        builder: (context, state) {
+          ref.invalidate(tripLocalStoreProvider);
+          return TripDashboardScreen(tripId: state.pathParameters['tripId']!);
+        },
+        extra: {
+          'trips': Library(tripLocalStoreProvider),
+        },
       ),
     ],
   );

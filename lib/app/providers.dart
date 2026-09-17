@@ -16,6 +16,8 @@ import '../transit/transit_repository.dart';
 import '../weather/weather_api.dart';
 import '../weather/weather_local_store.dart';
 import '../weather/weather_repository.dart';
+import '../features/trips/trip_api.dart';
+import '../features/trips/trip_local_store.dart';
 import 'router.dart';
 
 /// Where the self-hosted server URL is persisted (see
@@ -126,4 +128,15 @@ final weatherRepositoryProvider = Provider<WeatherRepository>((ref) {
     weatherApi: ref.watch(weatherApiProvider),
     localStore: ref.watch(weatherLocalStoreProvider),
   );
+});
+
+/// Local (non-secure) cache for trip data — see docs/offline-first.md.
+/// A minimal, feature-scoped stand-in for the full local-persistence
+/// mechanism issue #21 will decide on.
+final tripLocalStoreProvider = Provider<TripLocalStore>(
+  (ref) => TripLocalStore(),
+);
+
+final tripApiProvider = Provider<TripApi>((ref) {
+  return TripApi(apiClient: ref.watch(apiClientProvider));
 });

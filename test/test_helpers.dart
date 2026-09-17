@@ -10,6 +10,9 @@ import 'package:trek/transit/transit_models.dart';
 import 'package:trek/weather/weather_local_store.dart';
 import 'package:trek/weather/weather_models.dart';
 
+/// Trip test helpers.
+import '../features/trips/trip_models.dart';
+
 /// Builds a syntactically-valid, unsigned JWT string for tests — Trek's
 /// backend is the only thing that verifies the signature; the client only
 /// ever reads claims out of the payload.
@@ -152,4 +155,43 @@ class InMemoryTransitLocalStore implements TransitLocalStore {
   @override
   Future<void> writeAirportSearch(String key, List<Airport> results) async =>
       airports[key] = results;
+}
+
+/// Trip test helpers.
+class InMemoryTripLocalStore implements TripLocalStore {
+  InMemoryTripLocalStore({
+    List<Trip> trips = const [],
+    List<Tag> tags = const [],
+  })  : _trips = List.of(trips),
+        _tags = List.of(tags);
+
+  List<Trip> _trips;
+  List<Tag> _tags;
+
+  @override
+  Future<List<Trip>> readTrips() async => List.of(_trips);
+
+  @override
+  Future<void> writeTrips(List<Trip> trips) async =>
+      _trips = List.of(trips);
+
+  @override
+  List<Tag> readTags() => List.of(_tags);
+
+  @override
+  Future<List<Tag>> readTagsAsync() async {
+    final result = List.of(_tags);
+    _tags = List.of(result);
+    return result;
+  }
+
+  @override
+  void addTrip(Trip trip) {
+    final existing = _trips
+        .where((t) => t.id == trip.id)
+        .toList(growable: false);
+    _trips.addAll(trips.map((t) => existing.isNotEmpty && t.id == trip.id
+        ? existing.first
+        : t));
+  }
 }
