@@ -2,6 +2,7 @@ import 'package:go_router/go_router.dart';
 
 import '../auth/auth_service.dart';
 import '../config/server_config.dart';
+import '../features/atlas/atlas_screen.dart';
 import '../features/auth/login_screen.dart';
 import '../features/auth/mfa_screen.dart';
 import '../features/server_setup/server_setup_screen.dart';
@@ -45,6 +46,7 @@ GoRouter buildAppRouter({
         builder: (context, state) => const ServerSetupScreen(),
       ),
       GoRoute(path: '/login', builder: (context, state) => const LoginScreen()),
+      GoRoute(path: '/atlas', builder: (context, state) => const AtlasScreen()),
       GoRoute(
         path: '/login/mfa',
         builder: (context, state) =>
