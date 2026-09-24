@@ -132,6 +132,14 @@ class AuthService {
     return token.token;
   }
 
+  /// The signed-in user's id (see [SessionToken.userId]), or `null` without
+  /// a live session. Like [currentAccessToken], a purely local read.
+  Future<int?> get currentUserId async {
+    final token = await _tokenStorage.read();
+    if (token == null || token.isExpired) return null;
+    return token.userId;
+  }
+
   /// Wire this into an authenticated [ApiClient]'s `onUnauthorized` callback.
   /// A 401 from Trek (e.g. the token's `password_version` was invalidated by
   /// a password change on another device) means the session is dead — there

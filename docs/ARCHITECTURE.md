@@ -13,8 +13,9 @@
 
 Tracked in [ROADMAP.md](ROADMAP.md), Phase 1 foundation issues:
 
-- **Networking & auth** ([#1](https://github.com/ryanmac8/trek-native-app/issues/1)) — HTTP client, error handling, server config, secure token storage, and the login/MFA/logout flow are implemented; see [networking-auth.md](networking-auth.md). The server-setup/login UI and app-shell wiring landed as part of #2 (see below). Open: request/response models for the rest of the data model, and an authenticated (bearer-token) `ApiClient` — nothing has needed one yet.
+- **Networking & auth** ([#1](https://github.com/ryanmac8/trek-native-app/issues/1)) — HTTP client, error handling, server config, secure token storage, and the login/MFA/logout flow are implemented; see [networking-auth.md](networking-auth.md). The server-setup/login UI and app-shell wiring landed as part of #2 (see below). The authenticated (bearer-token) `ApiClient` is `apiClientProvider`. Open: request/response models for the rest of the data model.
 - **State management, navigation, design system** ([#2](https://github.com/ryanmac8/trek-native-app/issues/2)) — Riverpod for state/DI, go_router for navigation (auth/server-gated redirects), a Material 3 design system (colors, typography, spacing, Trek's place category colors), a global snackbar messenger, the real Trek app icon/splash image, and an animated startup screen. See [app-shell.md](app-shell.md). Open: local caching strategy (belongs with #21) and the rest of the reusable UI kit (form fields, date/time pickers, currency input).
+- **Atlas** ([#18](https://github.com/ryanmac8/trek-native-app/issues/18)) — the stats dashboard is built, read-only with a per-account local cache; see [atlas.md](atlas.md). Open: visited-country/region marking, bucket list, map view.
 - **Offline-first sync mechanism** ([#21](https://github.com/ryanmac8/trek-native-app/issues/21)) — local database choice, conflict resolution strategy, and write-retry/outbox mechanism are undecided. See [offline-first.md](offline-first.md).
 
 Decisions here should get filled in as those issues are worked, rather than guessed at ahead of time.

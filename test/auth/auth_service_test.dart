@@ -239,6 +239,38 @@ void main() {
     );
   });
 
+  group('AuthService.currentUserId', () {
+    test('returns the stored token\'s user id', () async {
+      await storage.write(
+        SessionToken(token: _futureJwt(), expiresAt: DateTime.utc(2030)),
+      );
+      final auth = AuthService(
+        apiClient: ApiClient(baseUrl: 'https://trek.example.com'),
+        tokenStorage: storage,
+      );
+
+      expect(await auth.currentUserId, 1);
+    });
+
+    test('returns null without a live session', () async {
+      final auth = AuthService(
+        apiClient: ApiClient(baseUrl: 'https://trek.example.com'),
+        tokenStorage: storage,
+      );
+      expect(await auth.currentUserId, isNull);
+
+      await storage.write(
+        SessionToken(
+          token: _expiredJwt(),
+          expiresAt: DateTime.now().toUtc().subtract(
+            const Duration(minutes: 1),
+          ),
+        ),
+      );
+      expect(await auth.currentUserId, isNull);
+    });
+  });
+
   group('AuthService.handleUnauthorized', () {
     test('clears the session and never asks the caller to retry', () async {
       await storage.write(

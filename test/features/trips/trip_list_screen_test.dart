@@ -6,6 +6,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:trek/app/providers.dart';
+import 'package:trek/atlas/atlas_api.dart';
+import 'package:trek/atlas/atlas_local_store.dart';
+import 'package:trek/atlas/atlas_models.dart';
+import 'package:trek/atlas/atlas_repository.dart';
 import 'package:trek/auth/auth_service.dart';
 import 'package:trek/config/server_config.dart';
 import 'package:trek/network/api_client.dart';
@@ -55,4 +59,60 @@ void main() {
     expect(find.text('Log in'), findsWidgets);
     expect(authService.isAuthenticated.value, isFalse);
   });
+
+  testWidgets('the Atlas action opens the Atlas screen', (tester) async {
+    final authService = AuthService(
+      apiClient: ApiClient(baseUrl: 'https://trek.example.com'),
+      tokenStorage: InMemoryTokenStorage(),
+    );
+    authService.isAuthenticated.value = true;
+    final atlasRepository = AtlasRepository(
+      atlasApi: AtlasApi(
+        apiClient: ApiClient(
+          baseUrl: 'https://trek.example.com',
+          httpClient: MockClient(
+            (request) async =>
+                http.Response(jsonEncode({'countries': [], 'stats': {}}), 200),
+          ),
+        ),
+      ),
+      localStore: _NoopAtlasLocalStore(),
+      cacheScope: () async => null,
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          authServiceProvider.overrideWithValue(authService),
+          atlasRepositoryProvider.overrideWithValue(atlasRepository),
+          serverConfigStorageProvider.overrideWithValue(
+            InMemoryServerConfigStorage(
+              initial: const ServerConfig(
+                publicUrl: 'https://trek.example.com',
+              ),
+            ),
+          ),
+        ],
+        child: Consumer(
+          builder: (context, ref, _) =>
+              MaterialApp.router(routerConfig: ref.watch(appRouterProvider)),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Atlas'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Atlas'), findsOneWidget);
+    expect(find.textContaining('No travels yet.'), findsOneWidget);
+  });
+}
+
+class _NoopAtlasLocalStore implements AtlasLocalStore {
+  @override
+  Future<CachedAtlasStats?> read(String scope) async => null;
+
+  @override
+  Future<void> write(String scope, CachedAtlasStats stats) async {}
 }
