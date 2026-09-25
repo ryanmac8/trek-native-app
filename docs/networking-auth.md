@@ -11,9 +11,9 @@ First slice of [issue #1](https://github.com/ryanmac8/trek-native-app/issues/1):
 | [lib/config/server_config_resolver.dart](../lib/config/server_config_resolver.dart) | `ServerConfigResolver.resolveBaseUrl()` — combines `ServerConfigStorage` and `WifiNetworkInfo` into the single base URL to use for the current network. |
 | [lib/network/api_exception.dart](../lib/network/api_exception.dart) | Typed exceptions: `NetworkException`, `UnauthorizedException`, `ForbiddenException`, `ValidationException`, `ServerException` (with status code) — each optionally carries Trek's `code` field (e.g. `AUTH_REQUIRED`). |
 | [lib/network/api_client.dart](../lib/network/api_client.dart) | Wraps `package:http`. Resolves paths against a base URL (fixed via `baseUrl`, or resolved per-request via `getBaseUrl`), JSON-encodes/decodes bodies, attaches a bearer token via an injected `getAccessToken` callback, and maps non-2xx responses to the exceptions above. |
-| [lib/auth/session_token.dart](../lib/auth/session_token.dart) | `SessionToken` — Trek's single session JWT, decoding its `exp` claim client-side. |
+| [lib/auth/session_token.dart](../lib/auth/session_token.dart) | `SessionToken` — Trek's single session JWT, decoding its `exp` claim (and the `id` claim, as `userId`) client-side. |
 | [lib/auth/token_storage.dart](../lib/auth/token_storage.dart) | `TokenStorage` interface + `SecureTokenStorage`, which persists the token in the iOS Keychain / Android Keystore via `flutter_secure_storage`. |
-| [lib/auth/auth_service.dart](../lib/auth/auth_service.dart) | `login`, `verifyMfaLogin`, `logout`, `currentAccessToken` (expiry-aware, local-only check), `handleUnauthorized`, and an `isAuthenticated` listenable. |
+| [lib/auth/auth_service.dart](../lib/auth/auth_service.dart) | `login`, `verifyMfaLogin`, `logout`, `currentAccessToken` (expiry-aware, local-only check), `currentUserId` (the live session's user id, also local-only), `handleUnauthorized`, and an `isAuthenticated` listenable. |
 
 ## Server configuration
 
@@ -37,4 +37,4 @@ Error responses are `{ error: string, code?: string }`. Validation failures (400
 
 ## Composition
 
-`ApiClient` and `AuthService` have no circular dependency: `AuthService` holds an unauthenticated `ApiClient` for the auth endpoints. A separate, authenticated `ApiClient` for the rest of the app uses `authService.currentAccessToken` as `getAccessToken`, `authService.handleUnauthorized` as `onUnauthorized`, and `serverConfigResolver.resolveBaseUrl` as `getBaseUrl` — so a 401 clears the session and `isAuthenticated` reflects it, and every request targets whichever of the public/private server URLs matches the current Wi-Fi network.
+`ApiClient` and `AuthService` have no circular dependency: `AuthService` holds an unauthenticated `ApiClient` for the auth endpoints. A separate, authenticated `ApiClient` for the rest of the app (`apiClientProvider`) uses `authService.currentAccessToken` as `getAccessToken`, `authService.handleUnauthorized` as `onUnauthorized`, and `serverConfigResolver.resolveBaseUrl` as `getBaseUrl` — so a 401 clears the session and `isAuthenticated` reflects it, and every request targets whichever of the public/private server URLs matches the current Wi-Fi network.

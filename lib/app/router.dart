@@ -7,6 +7,7 @@ import '../features/auth/mfa_screen.dart';
 import '../features/server_setup/server_setup_screen.dart';
 import '../features/trips/trip_dashboard_screen.dart';
 import '../features/trips/trip_list_screen.dart';
+import '../features/vacay/vacay_screen.dart';
 
 /// Builds the app's [GoRouter], gating navigation on two local (never
 /// network) reads: whether a server has been configured
@@ -45,6 +46,7 @@ GoRouter buildAppRouter({
         builder: (context, state) => const ServerSetupScreen(),
       ),
       GoRoute(path: '/login', builder: (context, state) => const LoginScreen()),
+      GoRoute(path: '/vacay', builder: (context, state) => const VacayScreen()),
       GoRoute(
         path: '/login/mfa',
         builder: (context, state) =>
