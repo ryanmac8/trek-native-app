@@ -5,6 +5,8 @@ import '../config/server_config.dart';
 import '../features/auth/login_screen.dart';
 import '../features/auth/mfa_screen.dart';
 import '../features/server_setup/server_setup_screen.dart';
+import '../features/journey/journey_detail_screen.dart';
+import '../features/journey/journey_list_screen.dart';
 import '../features/trips/trip_dashboard_screen.dart';
 import '../features/trips/trip_list_screen.dart';
 
@@ -49,6 +51,16 @@ GoRouter buildAppRouter({
         path: '/login/mfa',
         builder: (context, state) =>
             MfaScreen(mfaToken: state.extra! as String),
+      ),
+      GoRoute(
+        path: '/journeys',
+        builder: (context, state) => const JourneyListScreen(),
+      ),
+      GoRoute(
+        path: '/journeys/:journeyId',
+        builder: (context, state) => JourneyDetailScreen(
+          journeyId: int.tryParse(state.pathParameters['journeyId']!) ?? 0,
+        ),
       ),
       GoRoute(
         path: '/trips',
