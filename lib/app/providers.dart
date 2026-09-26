@@ -6,6 +6,9 @@ import '../auth/token_storage.dart';
 import '../config/server_config.dart';
 import '../config/server_config_resolver.dart';
 import '../config/wifi_network_info.dart';
+import '../journey/journey_api.dart';
+import '../journey/journey_local_store.dart';
+import '../journey/journey_repository.dart';
 import '../network/api_client.dart';
 import 'router.dart';
 
@@ -28,9 +31,8 @@ final serverConfigResolverProvider = Provider<ServerConfigResolver>((ref) {
 });
 
 /// Unauthenticated client for the `/api/auth/*` endpoints — [AuthService]
-/// wraps this. A separate authenticated client (with a bearer token and
-/// 401 handling wired to [AuthService.handleUnauthorized]) belongs to
-/// whichever feature is the first to need it.
+/// wraps this. The authenticated client for the rest of the API is
+/// [apiClientProvider] below.
 final authApiClientProvider = Provider<ApiClient>((ref) {
   return ApiClient(
     getBaseUrl: ref.watch(serverConfigResolverProvider).resolveBaseUrl,
@@ -52,5 +54,51 @@ final appRouterProvider = Provider<GoRouter>((ref) {
   return buildAppRouter(
     authService: ref.watch(authServiceProvider),
     serverConfigStorage: ref.watch(serverConfigStorageProvider),
+  );
+});
+
+/// Authenticated client for the rest of Trek's API — attaches a bearer
+/// token via [AuthService.currentAccessToken] (a purely local read) and
+/// clears the local session on a 401 via [AuthService.handleUnauthorized].
+/// There's no refresh flow to retry against.
+final apiClientProvider = Provider<ApiClient>((ref) {
+  final authService = ref.watch(authServiceProvider);
+  return ApiClient(
+    getBaseUrl: ref.watch(serverConfigResolverProvider).resolveBaseUrl,
+    getAccessToken: () => authService.currentAccessToken,
+    onUnauthorized: authService.handleUnauthorized,
+  );
+});
+
+final journeyApiProvider = Provider<JourneyApi>((ref) {
+  return JourneyApi(apiClient: ref.watch(apiClientProvider));
+});
+
+/// Local (non-secure) cache for journeys — see docs/offline-first.md.
+/// A minimal, feature-scoped stand-in for the full local-persistence
+/// mechanism issue #21 will decide on.
+final journeyLocalStoreProvider = Provider<JourneyLocalStore>(
+  (ref) => PreferencesJourneyLocalStore(),
+);
+
+/// The account a cached journey snapshot belongs to: the configured public
+/// server URL plus the signed-in user id, or `null` without a session.
+/// Both are local reads.
+final journeyCacheScopeProvider = Provider<Future<String?> Function()>((ref) {
+  final authService = ref.watch(authServiceProvider);
+  final serverConfigStorage = ref.watch(serverConfigStorageProvider);
+  return () async {
+    final userId = await authService.currentUserId;
+    final server = await serverConfigStorage.read();
+    if (userId == null || server == null) return null;
+    return '${server.publicUrl}#$userId';
+  };
+});
+
+final journeyRepositoryProvider = Provider<JourneyRepository>((ref) {
+  return JourneyRepository(
+    journeyApi: ref.watch(journeyApiProvider),
+    localStore: ref.watch(journeyLocalStoreProvider),
+    cacheScope: ref.watch(journeyCacheScopeProvider),
   );
 });
