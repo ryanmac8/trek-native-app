@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:trek/app/providers.dart';
 import 'package:trek/app/router.dart';
 import 'package:trek/auth/auth_service.dart';
 import 'package:trek/config/server_config.dart';
@@ -28,7 +30,15 @@ void main() {
       serverConfigStorage: serverConfigStorage,
       initialLocation: initialLocation,
     );
-    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          authServiceProvider.overrideWithValue(authService),
+          outboxStoreProvider.overrideWithValue(InMemoryOutboxStore()),
+        ],
+        child: MaterialApp.router(routerConfig: router),
+      ),
+    );
     await tester.pumpAndSettle();
   }
 
