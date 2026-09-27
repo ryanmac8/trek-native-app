@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:trek/auth/session_token.dart';
 import 'package:trek/auth/token_storage.dart';
 import 'package:trek/config/server_config.dart';
+import 'package:trek/sync/outbox.dart';
+import 'package:trek/sync/pending_write.dart';
 
 /// Builds a syntactically-valid, unsigned JWT string for tests — Trek's
 /// backend is the only thing that verifies the signature; the client only
@@ -62,4 +64,20 @@ class InMemoryServerConfigStorage implements ServerConfigStorage {
 
   @override
   Future<void> clear() async => _config = null;
+}
+
+/// In-memory [OutboxStore] fake — avoids the `shared_preferences` platform
+/// channel. [writes] exposes what was last persisted.
+class InMemoryOutboxStore implements OutboxStore {
+  InMemoryOutboxStore([List<PendingWrite> initial = const []])
+    : writes = List.of(initial);
+
+  List<PendingWrite> writes;
+
+  @override
+  Future<List<PendingWrite>> read() async => List.of(writes);
+
+  @override
+  Future<void> write(List<PendingWrite> writes) async =>
+      this.writes = List.of(writes);
 }

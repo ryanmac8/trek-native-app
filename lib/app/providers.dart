@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -7,6 +9,10 @@ import '../config/server_config.dart';
 import '../config/server_config_resolver.dart';
 import '../config/wifi_network_info.dart';
 import '../network/api_client.dart';
+import '../sync/outbox.dart';
+import '../sync/pending_write.dart';
+import '../sync/sync_engine.dart';
+import '../sync/sync_status.dart';
 import 'router.dart';
 
 /// Where the self-hosted server URL is persisted (see
@@ -53,4 +59,47 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     authService: ref.watch(authServiceProvider),
     serverConfigStorage: ref.watch(serverConfigStorageProvider),
   );
+});
+
+/// Durable storage for queued offline writes (see docs/offline-sync.md).
+final outboxStoreProvider = Provider<OutboxStore>(
+  (ref) => PreferencesOutboxStore(),
+);
+
+final outboxProvider = Provider<Outbox>((ref) {
+  final outbox = Outbox(store: ref.watch(outboxStoreProvider));
+  ref.onDispose(outbox.dispose);
+  return outbox;
+});
+
+/// Every feature's [SyncHandler]s, keyed by the [PendingWrite.kind] they
+/// push. A feature that queues writes adds its entries here.
+final syncHandlersProvider = Provider<Map<String, SyncHandler>>(
+  (ref) => const {},
+);
+
+/// Drains [outboxProvider]. Also drains whenever the user logs in, so
+/// writes held back by a 401 go out as soon as a session exists again.
+final syncEngineProvider = Provider<SyncEngine>((ref) {
+  final engine = SyncEngine(
+    outbox: ref.watch(outboxProvider),
+    handlers: ref.watch(syncHandlersProvider),
+  );
+  final isAuthenticated = ref.watch(authServiceProvider).isAuthenticated;
+  void onAuthChanged() {
+    if (isAuthenticated.value) unawaited(engine.drain());
+  }
+
+  isAuthenticated.addListener(onAuthChanged);
+  ref.onDispose(() {
+    isAuthenticated.removeListener(onAuthChanged);
+    unawaited(engine.dispose());
+  });
+  return engine;
+});
+
+final syncStatusProvider = StreamProvider<SyncStatus>((ref) async* {
+  final engine = ref.watch(syncEngineProvider);
+  yield engine.status;
+  yield* engine.statusChanges;
 });

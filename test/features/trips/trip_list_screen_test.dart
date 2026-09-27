@@ -30,6 +30,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          outboxStoreProvider.overrideWithValue(InMemoryOutboxStore()),
           authServiceProvider.overrideWithValue(authService),
           serverConfigStorageProvider.overrideWithValue(
             InMemoryServerConfigStorage(

@@ -15,6 +15,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          outboxStoreProvider.overrideWithValue(InMemoryOutboxStore()),
           serverConfigStorageProvider.overrideWithValue(
             InMemoryServerConfigStorage(),
           ),
@@ -41,6 +42,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          outboxStoreProvider.overrideWithValue(InMemoryOutboxStore()),
           serverConfigStorageProvider.overrideWithValue(
             InMemoryServerConfigStorage(
               initial: const ServerConfig(

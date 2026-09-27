@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../app/app_messenger.dart';
 import '../../app/providers.dart';
 import '../../design/widgets/empty_state.dart';
+import '../sync/sync_status_indicator.dart';
 
 /// Landing screen once a session is active. Trips themselves aren't wired
 /// up yet (issue #3) — this establishes the navigation shell and an
@@ -17,6 +18,7 @@ class TripListScreen extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('Trips'),
         actions: [
+          const SyncStatusIndicator(),
           IconButton(
             icon: const Icon(Icons.logout),
             tooltip: 'Log out',

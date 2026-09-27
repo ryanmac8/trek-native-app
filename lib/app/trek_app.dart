@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../design/app_theme.dart';
+import '../sync/sync_engine.dart';
 import 'app_messenger.dart';
 import 'providers.dart';
 import 'splash_screen.dart';
@@ -32,10 +35,16 @@ class _TrekAppState extends ConsumerState<TrekApp> {
   // completes and would otherwise silently drop the message.
   Object? _startupError;
 
+  late final AppLifecycleListener _lifecycleListener;
+  StreamSubscription<SyncRejection>? _rejections;
+
   @override
   void initState() {
     super.initState();
     _startup = _initialize();
+    _lifecycleListener = AppLifecycleListener(
+      onResume: () => unawaited(ref.read(syncEngineProvider).drain()),
+    );
   }
 
   Future<void> _initialize() async {
@@ -55,6 +64,31 @@ class _TrekAppState extends ConsumerState<TrekApp> {
       debugPrint('TrekApp: session restore failed: $error\n$stackTrace');
       _startupError = error;
     }
+    if (mounted) _startSync();
+  }
+
+  /// Starts draining queued offline writes (see docs/offline-sync.md) and
+  /// surfaces any the server rejects. Deliberately not awaited: startup
+  /// never waits on the network.
+  void _startSync() {
+    final engine = ref.read(syncEngineProvider);
+    _rejections = engine.rejections.listen(
+      (rejection) => AppMessenger.showError(
+        'A change could not be saved: ${rejection.error}',
+      ),
+    );
+    unawaited(
+      engine.start().catchError((Object error, StackTrace stackTrace) {
+        debugPrint('TrekApp: sync start failed: $error\n$stackTrace');
+      }),
+    );
+  }
+
+  @override
+  void dispose() {
+    _lifecycleListener.dispose();
+    unawaited(_rejections?.cancel());
+    super.dispose();
   }
 
   @override
