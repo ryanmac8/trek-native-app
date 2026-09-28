@@ -213,30 +213,35 @@ class _EventCard extends StatelessWidget {
     final textTheme = Theme.of(context).textTheme;
     return AppCard(
       padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(
-              horizontal: AppSpacing.md,
-              vertical: AppSpacing.xs,
+      // AppCard paints a colored DecoratedBox, which would hide the switch
+      // tiles' ink splashes; a transparent Material gives them a surface.
+      child: Material(
+        type: MaterialType.transparency,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.md,
+                vertical: AppSpacing.xs,
+              ),
+              child: Text(
+                notificationEventLabel(eventType),
+                style: textTheme.titleMedium,
+              ),
             ),
-            child: Text(
-              notificationEventLabel(eventType),
-              style: textTheme.titleMedium,
-            ),
-          ),
-          for (final channel in matrix.channelsFor(eventType))
-            SwitchListTile(
-              key: Key('pref-$eventType-${channel.id}'),
-              title: Text(channel.displayLabel),
-              subtitle: channel.configured
-                  ? null
-                  : const Text('Not configured yet'),
-              value: matrix.isEnabled(eventType, channel.id),
-              onChanged: (value) => onChanged(channel.id, value),
-            ),
-        ],
+            for (final channel in matrix.channelsFor(eventType))
+              SwitchListTile(
+                key: Key('pref-$eventType-${channel.id}'),
+                title: Text(channel.displayLabel),
+                subtitle: channel.configured
+                    ? null
+                    : const Text('Not configured yet'),
+                value: matrix.isEnabled(eventType, channel.id),
+                onChanged: (value) => onChanged(channel.id, value),
+              ),
+          ],
+        ),
       ),
     );
   }
