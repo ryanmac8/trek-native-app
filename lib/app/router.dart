@@ -4,6 +4,7 @@ import '../auth/auth_service.dart';
 import '../config/server_config.dart';
 import '../features/auth/login_screen.dart';
 import '../features/auth/mfa_screen.dart';
+import '../features/notification_preferences/notification_preferences_screen.dart';
 import '../features/server_setup/server_setup_screen.dart';
 import '../features/trips/trip_dashboard_screen.dart';
 import '../features/trips/trip_list_screen.dart';
@@ -45,6 +46,10 @@ GoRouter buildAppRouter({
         builder: (context, state) => const ServerSetupScreen(),
       ),
       GoRoute(path: '/login', builder: (context, state) => const LoginScreen()),
+      GoRoute(
+        path: '/notification-preferences',
+        builder: (context, state) => const NotificationPreferencesScreen(),
+      ),
       GoRoute(
         path: '/login/mfa',
         builder: (context, state) =>
