@@ -15,8 +15,8 @@ First slice of [issue #2](https://github.com/ryanmac8/trek-native-app/issues/2):
 | `tokenStorageProvider` | `TokenStorage` | `SecureTokenStorage` |
 | `authServiceProvider` | `AuthService` | wraps `authApiClientProvider` + `tokenStorageProvider` |
 | `appRouterProvider` | `GoRouter` | see below |
-
-An authenticated `ApiClient` (bearer token + 401 handling wired to `AuthService.handleUnauthorized`) isn't provided yet — that belongs to whichever feature first needs to call an authenticated endpoint.
+| `apiClientProvider` | `ApiClient` | authenticated client for the rest of the API: `AuthService.currentAccessToken` as `getAccessToken`, `AuthService.handleUnauthorized` as `onUnauthorized`, `serverConfigResolverProvider` as `getBaseUrl` |
+| `notificationPreferencesApiProvider`, `notificationPreferencesLocalStoreProvider`, `notificationPreferencesCacheScopeProvider`, `notificationPreferencesRepositoryProvider` | Notification preferences data layer | see [notification-preferences.md](notification-preferences.md) |
 
 ## Navigation
 
@@ -29,6 +29,7 @@ An authenticated `ApiClient` (bearer token + 401 handling wired to `AuthService.
 | `/login/mfa` | `MfaScreen` (reached with the `mfaToken` as `extra`) |
 | `/trips` | `TripListScreen` |
 | `/trips/:tripId` | `TripDashboardScreen` |
+| `/notification-preferences` | `NotificationPreferencesScreen` (opened from the trip list's bell action) |
 
 `redirect` gates navigation on two local (never network) reads, evaluated on every navigation:
 

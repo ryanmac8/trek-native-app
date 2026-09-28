@@ -44,6 +44,24 @@ class SessionToken {
 
   bool get isExpired => DateTime.now().toUtc().isAfter(expiresAt);
 
+  /// The Trek user id from the JWT's `id` claim, or `null` if the payload
+  /// has none. Used to scope per-account local caches, so a different
+  /// account signing in on the same device never sees the previous one's
+  /// cached data.
+  int? get userId {
+    final parts = token.split('.');
+    if (parts.length != 3) return null;
+    try {
+      final payload = jsonDecode(
+        utf8.decode(base64Url.decode(base64Url.normalize(parts[1]))),
+      );
+      final id = payload is Map<String, dynamic> ? payload['id'] : null;
+      return id is int ? id : null;
+    } on FormatException {
+      return null;
+    }
+  }
+
   Map<String, dynamic> toStorageJson() => {
     'token': token,
     'expiresAt': expiresAt.toIso8601String(),
