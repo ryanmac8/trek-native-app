@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:trek/auth/session_token.dart';
 import 'package:trek/auth/token_storage.dart';
 import 'package:trek/config/server_config.dart';
+import 'package:trek/features/trip_invites/pending_invite_store.dart';
 
 /// Builds a syntactically-valid, unsigned JWT string for tests — Trek's
 /// backend is the only thing that verifies the signature; the client only
@@ -62,4 +63,33 @@ class InMemoryServerConfigStorage implements ServerConfigStorage {
 
   @override
   Future<void> clear() async => _config = null;
+}
+
+/// In-memory [PendingInviteStore] fake — avoids the `shared_preferences`
+/// platform channel in widget tests.
+class InMemoryPendingInviteStore implements PendingInviteStore {
+  InMemoryPendingInviteStore([List<PendingInvite>? initial])
+    : invites = [...?initial];
+
+  final List<PendingInvite> invites;
+
+  @override
+  Future<List<PendingInvite>> readAll() async => [...invites];
+
+  @override
+  Future<void> put(PendingInvite invite) async {
+    final index = invites.indexWhere(
+      (e) => e.server == invite.server && e.token == invite.token,
+    );
+    if (index == -1) {
+      invites.add(invite);
+    } else {
+      invites[index] = invite;
+    }
+  }
+
+  @override
+  Future<void> remove({required String server, required String token}) async {
+    invites.removeWhere((e) => e.server == server && e.token == token);
+  }
 }

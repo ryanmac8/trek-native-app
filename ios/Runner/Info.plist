@@ -49,5 +49,18 @@
 		<string>Trek uses your location to detect which Wi-Fi network you're on, so it can automatically switch to your home server's local address instead of its public one.</string>
 		<key>UIStatusBarHidden</key>
 		<false/>
+		<key>CFBundleURLTypes</key>
+		<array>
+			<dict>
+				<key>CFBundleURLName</key>
+				<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+				<key>CFBundleURLSchemes</key>
+				<array>
+					<string>trek</string>
+				</array>
+			</dict>
+		</array>
+		<key>FlutterDeepLinkingEnabled</key>
+		<true/>
 	</dict>
 </plist>

@@ -15,8 +15,8 @@ First slice of [issue #2](https://github.com/ryanmac8/trek-native-app/issues/2):
 | `tokenStorageProvider` | `TokenStorage` | `SecureTokenStorage` |
 | `authServiceProvider` | `AuthService` | wraps `authApiClientProvider` + `tokenStorageProvider` |
 | `appRouterProvider` | `GoRouter` | see below |
-
-An authenticated `ApiClient` (bearer token + 401 handling wired to `AuthService.handleUnauthorized`) isn't provided yet — that belongs to whichever feature first needs to call an authenticated endpoint.
+| `apiClientProvider` | `ApiClient` | authenticated client for the rest of the API — bearer token from `AuthService.currentAccessToken`, 401s handled by `AuthService.handleUnauthorized` |
+| `tripInviteApiProvider`, `pendingInviteStoreProvider`, `tripInviteRepositoryProvider` | | trip invites — see [deep-links.md](deep-links.md) |
 
 ## Navigation
 
@@ -29,11 +29,14 @@ An authenticated `ApiClient` (bearer token + 401 handling wired to `AuthService.
 | `/login/mfa` | `MfaScreen` (reached with the `mfaToken` as `extra`) |
 | `/trips` | `TripListScreen` |
 | `/trips/:tripId` | `TripDashboardScreen` |
+| `/join/:token` | `JoinTripScreen` — see [deep-links.md](deep-links.md) |
 
 `redirect` gates navigation on two local (never network) reads, evaluated on every navigation:
 
 1. `ServerConfigStorage.read()` — no server configured → `/server-setup`.
 2. `AuthService.isAuthenticated.value` — no session → `/login`.
+
+It also normalizes `trek://` links delivered by the OS and resumes a trip invite opened while signed out — see [deep-links.md](deep-links.md#routing).
 
 `AuthService.isAuthenticated` (a `ValueNotifier<bool>`, so it doubles as a `Listenable`) is passed as `refreshListenable`, so the router re-evaluates on its own the moment a login/logout/token-expiry flips it — screens that change auth state never call `context.go()` themselves.
 
