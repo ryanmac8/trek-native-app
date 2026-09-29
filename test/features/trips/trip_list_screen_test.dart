@@ -7,7 +7,9 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:trek/app/providers.dart';
 import 'package:trek/auth/auth_service.dart';
+import 'package:trek/app/app_messenger.dart';
 import 'package:trek/config/server_config.dart';
+import 'package:trek/features/trip_invites/pending_invite_store.dart';
 import 'package:trek/network/api_client.dart';
 
 import '../../test_helpers.dart';
@@ -31,6 +33,9 @@ void main() {
       ProviderScope(
         overrides: [
           authServiceProvider.overrideWithValue(authService),
+          pendingInviteStoreProvider.overrideWithValue(
+            InMemoryPendingInviteStore(),
+          ),
           serverConfigStorageProvider.overrideWithValue(
             InMemoryServerConfigStorage(
               initial: const ServerConfig(
@@ -54,5 +59,61 @@ void main() {
 
     expect(find.text('Log in'), findsWidgets);
     expect(authService.isAuthenticated.value, isFalse);
+  });
+
+  testWidgets('sends a join queued offline and reports it', (tester) async {
+    final authService = AuthService(
+      apiClient: ApiClient(baseUrl: 'https://trek.example.com'),
+      tokenStorage: InMemoryTokenStorage(),
+    );
+    authService.isAuthenticated.value = true;
+    final store = InMemoryPendingInviteStore([
+      const PendingInvite(
+        token: 'tok',
+        server: 'https://trek.example.com',
+        acceptQueued: true,
+        tripTitle: 'New Zealand',
+      ),
+    ]);
+    final requests = <http.Request>[];
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          authServiceProvider.overrideWithValue(authService),
+          serverConfigStorageProvider.overrideWithValue(
+            InMemoryServerConfigStorage(
+              initial: const ServerConfig(
+                publicUrl: 'https://trek.example.com',
+              ),
+            ),
+          ),
+          pendingInviteStoreProvider.overrideWithValue(store),
+          apiClientProvider.overrideWithValue(
+            ApiClient(
+              baseUrl: 'https://trek.example.com',
+              httpClient: MockClient((request) async {
+                requests.add(request);
+                return http.Response(
+                  jsonEncode({'trip_id': 20, 'joined': true}),
+                  200,
+                );
+              }),
+            ),
+          ),
+        ],
+        child: Consumer(
+          builder: (context, ref, _) => MaterialApp.router(
+            routerConfig: ref.watch(appRouterProvider),
+            scaffoldMessengerKey: scaffoldMessengerKey,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(requests.single.url.path, '/api/trip-invites/tok/accept');
+    expect(store.invites, isEmpty);
+    expect(find.text('You joined New Zealand.'), findsOneWidget);
   });
 }
