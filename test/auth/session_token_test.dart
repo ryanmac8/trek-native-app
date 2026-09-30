@@ -49,4 +49,21 @@ void main() {
       expect(restored.expiresAt, DateTime.utc(2030, 1, 1));
     });
   });
+
+  group('SessionToken.userId', () {
+    test('reads the id claim', () {
+      final jwt = fakeJwt({'id': 42, 'exp': 1900000000});
+      expect(SessionToken.fromJwt(jwt).userId, 42);
+    });
+
+    test('is null when the payload has no id claim', () {
+      final jwt = fakeJwt({'exp': 1900000000});
+      expect(SessionToken.fromJwt(jwt).userId, isNull);
+    });
+
+    test('is null for an opaque, non-JWT token', () {
+      final token = SessionToken(token: 'abc', expiresAt: DateTime.utc(2030));
+      expect(token.userId, isNull);
+    });
+  });
 }

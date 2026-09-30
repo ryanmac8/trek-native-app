@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../design/app_theme.dart';
+import '../home_widgets/home_widget_refresher.dart';
 import 'app_messenger.dart';
 import 'providers.dart';
 import 'splash_screen.dart';
@@ -73,12 +74,14 @@ class _TrekAppState extends ConsumerState<TrekApp> {
             );
           });
         }
-        return MaterialApp.router(
-          title: 'Trek',
-          theme: AppTheme.light,
-          darkTheme: AppTheme.dark,
-          scaffoldMessengerKey: scaffoldMessengerKey,
-          routerConfig: ref.watch(appRouterProvider),
+        return HomeWidgetRefresher(
+          child: MaterialApp.router(
+            title: 'Trek',
+            theme: AppTheme.light,
+            darkTheme: AppTheme.dark,
+            scaffoldMessengerKey: scaffoldMessengerKey,
+            routerConfig: ref.watch(appRouterProvider),
+          ),
         );
       },
     );

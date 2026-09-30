@@ -3,6 +3,9 @@ import 'dart:convert';
 import 'package:trek/auth/session_token.dart';
 import 'package:trek/auth/token_storage.dart';
 import 'package:trek/config/server_config.dart';
+import 'package:trek/home_widgets/home_widget_publisher.dart';
+import 'package:trek/home_widgets/widget_trip.dart';
+import 'package:trek/home_widgets/widget_trip_store.dart';
 
 /// Builds a syntactically-valid, unsigned JWT string for tests — Trek's
 /// backend is the only thing that verifies the signature; the client only
@@ -62,4 +65,32 @@ class InMemoryServerConfigStorage implements ServerConfigStorage {
 
   @override
   Future<void> clear() async => _config = null;
+}
+
+/// In-memory [WidgetTripStore] fake — avoids the `shared_preferences`
+/// platform channel.
+class InMemoryWidgetTripStore implements WidgetTripStore {
+  final Map<String, List<WidgetTrip>> trips = {};
+
+  @override
+  Future<List<WidgetTrip>?> readTrips(String scope) async => trips[scope];
+
+  @override
+  Future<void> writeTrips(String scope, List<WidgetTrip> list) async =>
+      trips[scope] = [...list];
+}
+
+/// [HomeWidgetPublisher] fake that records every publish; [published] is
+/// `null` after a [clear].
+class RecordingHomeWidgetPublisher implements HomeWidgetPublisher {
+  final List<List<WidgetTrip>?> calls = [];
+
+  List<WidgetTrip>? get published => calls.isEmpty ? null : calls.last;
+
+  @override
+  Future<void> publishNextTrip(List<WidgetTrip> candidates) async =>
+      calls.add([...candidates]);
+
+  @override
+  Future<void> clear() async => calls.add(null);
 }
