@@ -16,7 +16,7 @@ First slice of [issue #2](https://github.com/ryanmac8/trek-native-app/issues/2):
 | `authServiceProvider` | `AuthService` | wraps `authApiClientProvider` + `tokenStorageProvider` |
 | `appRouterProvider` | `GoRouter` | see below |
 
-An authenticated `ApiClient` (bearer token + 401 handling wired to `AuthService.handleUnauthorized`) isn't provided yet — that belongs to whichever feature first needs to call an authenticated endpoint.
+`apiClientProvider` is the authenticated `ApiClient` for the rest of the API: bearer token from `AuthService.currentAccessToken`, 401 handling wired to `AuthService.handleUnauthorized`.
 
 ## Navigation
 

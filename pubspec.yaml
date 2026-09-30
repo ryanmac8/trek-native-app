@@ -54,6 +54,10 @@ dependencies:
   # Navigation (lib/app/router.dart).
   go_router: ^17.3.0
 
+  # Shared storage + redraw requests for the home-screen widget
+  # (lib/home_widgets/, docs/home-widgets.md). Requires iOS 14.
+  home_widget: ^0.10.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

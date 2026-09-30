@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="next_trip_widget_name">Next trip</string>
+    <string name="next_trip_widget_description">Countdown to your next Trek trip</string>
+    <string name="next_trip_widget_label">Next trip</string>
+    <string name="next_trip_widget_signed_out">Open Trek to sign in</string>
+    <string name="next_trip_widget_none">No upcoming trips</string>
+    <string name="next_trip_widget_tomorrow">Starts tomorrow</string>
+    <plurals name="next_trip_widget_in_days">
+        <item quantity="one">In %d day</item>
+        <item quantity="other">In %d days</item>
+    </plurals>
+    <string name="next_trip_widget_day_of">Day %1$d of %2$d</string>
+    <string name="next_trip_widget_day">Day %d</string>
+</resources>
