@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../design/app_spacing.dart';
 import '../../design/place_category_colors.dart';
@@ -29,7 +30,16 @@ class _TripDashboardScreenState extends State<TripDashboardScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('Trip ${widget.tripId}')),
+      appBar: AppBar(
+        title: Text('Trip ${widget.tripId}'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.event),
+            tooltip: 'Calendar sync',
+            onPressed: () => context.push('/trips/${widget.tripId}/calendar'),
+          ),
+        ],
+      ),
       body: IndexedStack(
         index: _tabIndex,
         children: [

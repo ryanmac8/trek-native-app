@@ -49,5 +49,15 @@
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
         </intent>
+        <!-- Calendar apps that can subscribe to a webcal:// feed, and a browser
+             for the Google Calendar fallback (lib/calendar_feed/). -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="webcal"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="https"/>
+        </intent>
     </queries>
 </manifest>
