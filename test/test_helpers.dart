@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:trek/auth/session_token.dart';
 import 'package:trek/auth/token_storage.dart';
+import 'package:trek/calendar_feed/calendar_feed.dart';
+import 'package:trek/calendar_feed/calendar_feed_store.dart';
 import 'package:trek/config/server_config.dart';
 
 /// Builds a syntactically-valid, unsigned JWT string for tests — Trek's
@@ -62,4 +64,26 @@ class InMemoryServerConfigStorage implements ServerConfigStorage {
 
   @override
   Future<void> clear() async => _config = null;
+}
+
+/// In-memory [CalendarFeedStore] fake — avoids the `flutter_secure_storage`
+/// platform channel.
+class InMemoryCalendarFeedStore implements CalendarFeedStore {
+  final Map<String, CalendarFeedSnapshot> snapshots = {};
+
+  static String key(String account, CalendarFeedScope scope) =>
+      '$account|${scope.cacheKey}';
+
+  @override
+  Future<CalendarFeedSnapshot?> read(
+    String account,
+    CalendarFeedScope scope,
+  ) async => snapshots[key(account, scope)];
+
+  @override
+  Future<void> write(
+    String account,
+    CalendarFeedScope scope,
+    CalendarFeedSnapshot snapshot,
+  ) async => snapshots[key(account, scope)] = snapshot;
 }

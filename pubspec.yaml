@@ -54,6 +54,9 @@ dependencies:
   # Navigation (lib/app/router.dart).
   go_router: ^17.3.0
 
+  # Opens webcal:// feed URLs in the device calendar app (lib/calendar_feed/).
+  url_launcher: ^6.3.1
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

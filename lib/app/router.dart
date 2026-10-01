@@ -1,8 +1,10 @@
 import 'package:go_router/go_router.dart';
 
 import '../auth/auth_service.dart';
+import '../calendar_feed/calendar_feed.dart';
 import '../config/server_config.dart';
 import '../features/auth/login_screen.dart';
+import '../features/calendar_feed/calendar_feed_screen.dart';
 import '../features/auth/mfa_screen.dart';
 import '../features/server_setup/server_setup_screen.dart';
 import '../features/trips/trip_dashboard_screen.dart';
@@ -58,6 +60,17 @@ GoRouter buildAppRouter({
         path: '/trips/:tripId',
         builder: (context, state) =>
             TripDashboardScreen(tripId: state.pathParameters['tripId']!),
+      ),
+      GoRoute(
+        path: '/trips/:tripId/calendar',
+        builder: (context, state) => CalendarFeedScreen(
+          scope: TripFeedScope(state.pathParameters['tripId']!),
+        ),
+      ),
+      GoRoute(
+        path: '/calendar',
+        builder: (context, state) =>
+            const CalendarFeedScreen(scope: AllTripsFeedScope()),
       ),
     ],
   );
