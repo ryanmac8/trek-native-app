@@ -7,6 +7,7 @@ import '../config/server_config.dart';
 import '../config/server_config_resolver.dart';
 import '../config/wifi_network_info.dart';
 import '../network/api_client.dart';
+import '../onboarding/onboarding_storage.dart';
 import 'router.dart';
 
 /// Where the self-hosted server URL is persisted (see
@@ -48,9 +49,16 @@ final authServiceProvider = Provider<AuthService>((ref) {
   );
 });
 
+/// Whether the first-run welcome screens have been seen (see
+/// [PreferencesOnboardingStorage]). Read by the router's redirect logic.
+final onboardingStorageProvider = Provider<OnboardingStorage>(
+  (ref) => PreferencesOnboardingStorage(),
+);
+
 final appRouterProvider = Provider<GoRouter>((ref) {
   return buildAppRouter(
     authService: ref.watch(authServiceProvider),
     serverConfigStorage: ref.watch(serverConfigStorageProvider),
+    onboardingStorage: ref.watch(onboardingStorageProvider),
   );
 });

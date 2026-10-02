@@ -14,6 +14,7 @@ First slice of [issue #2](https://github.com/ryanmac8/trek-native-app/issues/2):
 | `authApiClientProvider` | `ApiClient` | unauthenticated client for `/api/auth/*`, using `serverConfigResolverProvider` as `getBaseUrl` |
 | `tokenStorageProvider` | `TokenStorage` | `SecureTokenStorage` |
 | `authServiceProvider` | `AuthService` | wraps `authApiClientProvider` + `tokenStorageProvider` |
+| `onboardingStorageProvider` | `OnboardingStorage` | `PreferencesOnboardingStorage` — see [onboarding.md](onboarding.md) |
 | `appRouterProvider` | `GoRouter` | see below |
 
 An authenticated `ApiClient` (bearer token + 401 handling wired to `AuthService.handleUnauthorized`) isn't provided yet — that belongs to whichever feature first needs to call an authenticated endpoint.
@@ -24,15 +25,16 @@ An authenticated `ApiClient` (bearer token + 401 handling wired to `AuthService.
 
 | Path | Screen |
 | --- | --- |
+| `/welcome` | `WelcomeScreen` (first run only — see [onboarding.md](onboarding.md)) |
 | `/server-setup` | `ServerSetupScreen` |
 | `/login` | `LoginScreen` |
 | `/login/mfa` | `MfaScreen` (reached with the `mfaToken` as `extra`) |
 | `/trips` | `TripListScreen` |
 | `/trips/:tripId` | `TripDashboardScreen` |
 
-`redirect` gates navigation on two local (never network) reads, evaluated on every navigation:
+`redirect` gates navigation on local (never network) reads, evaluated on every navigation:
 
-1. `ServerConfigStorage.read()` — no server configured → `/server-setup`.
+1. `ServerConfigStorage.read()` — no server configured → `/welcome` if `OnboardingStorage.hasSeenWelcome()` is false, otherwise `/server-setup`.
 2. `AuthService.isAuthenticated.value` — no session → `/login`.
 
 `AuthService.isAuthenticated` (a `ValueNotifier<bool>`, so it doubles as a `Listenable`) is passed as `refreshListenable`, so the router re-evaluates on its own the moment a login/logout/token-expiry flips it — screens that change auth state never call `context.go()` themselves.

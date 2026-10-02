@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:trek/auth/session_token.dart';
 import 'package:trek/auth/token_storage.dart';
 import 'package:trek/config/server_config.dart';
+import 'package:trek/onboarding/onboarding_storage.dart';
 
 /// Builds a syntactically-valid, unsigned JWT string for tests — Trek's
 /// backend is the only thing that verifies the signature; the client only
@@ -62,4 +63,18 @@ class InMemoryServerConfigStorage implements ServerConfigStorage {
 
   @override
   Future<void> clear() async => _config = null;
+}
+
+/// In-memory [OnboardingStorage] fake — avoids the `shared_preferences`
+/// platform channel in widget tests.
+class InMemoryOnboardingStorage implements OnboardingStorage {
+  InMemoryOnboardingStorage({this.seen = false});
+
+  bool seen;
+
+  @override
+  Future<bool> hasSeenWelcome() async => seen;
+
+  @override
+  Future<void> markWelcomeSeen() async => seen = true;
 }

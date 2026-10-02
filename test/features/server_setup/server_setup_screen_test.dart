@@ -13,6 +13,9 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          onboardingStorageProvider.overrideWithValue(
+            InMemoryOnboardingStorage(seen: true),
+          ),
           serverConfigStorageProvider.overrideWithValue(storage),
           authServiceProvider.overrideWithValue(
             AuthService(
