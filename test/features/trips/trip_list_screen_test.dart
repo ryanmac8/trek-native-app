@@ -31,6 +31,9 @@ void main() {
       ProviderScope(
         overrides: [
           authServiceProvider.overrideWithValue(authService),
+          onboardingStorageProvider.overrideWithValue(
+            InMemoryOnboardingStorage(seen: true),
+          ),
           serverConfigStorageProvider.overrideWithValue(
             InMemoryServerConfigStorage(
               initial: const ServerConfig(

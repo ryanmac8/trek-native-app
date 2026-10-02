@@ -10,6 +10,7 @@ import '../test_helpers.dart';
 void main() {
   late AuthService authService;
   late InMemoryServerConfigStorage serverConfigStorage;
+  late InMemoryOnboardingStorage onboardingStorage;
 
   setUp(() {
     authService = AuthService(
@@ -17,6 +18,7 @@ void main() {
       tokenStorage: InMemoryTokenStorage(),
     );
     serverConfigStorage = InMemoryServerConfigStorage();
+    onboardingStorage = InMemoryOnboardingStorage(seen: true);
   });
 
   Future<void> pump(
@@ -26,13 +28,51 @@ void main() {
     final router = buildAppRouter(
       authService: authService,
       serverConfigStorage: serverConfigStorage,
+      onboardingStorage: onboardingStorage,
       initialLocation: initialLocation,
     );
     await tester.pumpWidget(MaterialApp.router(routerConfig: router));
     await tester.pumpAndSettle();
   }
 
-  testWidgets('redirects to server setup when no server is configured', (
+  testWidgets('redirects a fresh install to the welcome screens', (
+    tester,
+  ) async {
+    onboardingStorage.seen = false;
+
+    await pump(tester);
+
+    expect(find.text('Your trips. Your plan.'), findsOneWidget);
+  });
+
+  testWidgets(
+    'skips the welcome for an existing install that already has a server',
+    (tester) async {
+      onboardingStorage.seen = false;
+      await serverConfigStorage.write(
+        const ServerConfig(publicUrl: 'https://trek.example.com'),
+      );
+
+      await pump(tester, initialLocation: '/welcome');
+
+      expect(find.text('Log in'), findsWidgets);
+    },
+  );
+
+  testWidgets('redirects an authenticated user away from /welcome', (
+    tester,
+  ) async {
+    await serverConfigStorage.write(
+      const ServerConfig(publicUrl: 'https://trek.example.com'),
+    );
+    authService.isAuthenticated.value = true;
+
+    await pump(tester, initialLocation: '/welcome');
+
+    expect(find.text('Trips'), findsOneWidget);
+  });
+
+  testWidgets('redirects to server setup once the welcome has been seen', (
     tester,
   ) async {
     await pump(tester);

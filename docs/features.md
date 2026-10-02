@@ -4,6 +4,7 @@ What's actually implemented, not what's planned — see [ROADMAP.md](ROADMAP.md)
 
 | Feature | Status | Details |
 | --- | --- | --- |
+| First-run welcome screens | Has UI | Four swipeable intro pages (what Trek is, day-by-day planning, collaboration, self-hosting) shown once on a fresh install before server setup, with Skip / Get started. Local-only; existing installs with a server configured skip it. See [onboarding.md](onboarding.md). |
 | Self-hosted server configuration | Has UI | A public server URL and an optional private (LAN) URL, with automatic switching to the private one on trusted Wi-Fi networks. Entered via `ServerSetupScreen`. See [networking-auth.md](networking-auth.md) and [app-shell.md](app-shell.md). |
 | Account authentication | Has UI | Login, TOTP MFA, logout, and expiry-aware session persistence, against Trek's single-JWT session model. `LoginScreen`/`MfaScreen` wire this into the app shell; the router redirects between server setup, login, and the trip list automatically as auth state changes. See [networking-auth.md](networking-auth.md) and [app-shell.md](app-shell.md). |
 | App shell (navigation, state management, design system) | Foundational, no feature screens yet | Riverpod + go_router + a Material 3 design system (including Trek's place category colors), a global snackbar messenger, and a reusable UI kit (empty/loading/skeleton states, cards, list rows). Trip list and trip dashboard (with Days/Places/Budget/Packing/Todos tabs) exist as placeholders — no trip data model yet. See [app-shell.md](app-shell.md). |

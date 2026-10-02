@@ -9,12 +9,15 @@ import 'package:trek/network/api_client.dart';
 import 'test_helpers.dart';
 
 void main() {
-  testWidgets('starts on server setup when no server is configured yet', (
+  testWidgets('starts on the welcome screens on a fresh install', (
     tester,
   ) async {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          onboardingStorageProvider.overrideWithValue(
+            InMemoryOnboardingStorage(),
+          ),
           serverConfigStorageProvider.overrideWithValue(
             InMemoryServerConfigStorage(),
           ),
@@ -32,7 +35,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Connect to your Trek server'), findsOneWidget);
+    expect(find.text('Your trips. Your plan.'), findsOneWidget);
   });
 
   testWidgets('fails closed to the login flow when session restore throws', (
@@ -41,6 +44,9 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          onboardingStorageProvider.overrideWithValue(
+            InMemoryOnboardingStorage(seen: true),
+          ),
           serverConfigStorageProvider.overrideWithValue(
             InMemoryServerConfigStorage(
               initial: const ServerConfig(

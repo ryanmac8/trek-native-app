@@ -28,6 +28,9 @@ Future<void> _pumpLoggedOutApp(
     ProviderScope(
       overrides: [
         authServiceProvider.overrideWithValue(authService),
+        onboardingStorageProvider.overrideWithValue(
+          InMemoryOnboardingStorage(seen: true),
+        ),
         serverConfigStorageProvider.overrideWithValue(
           InMemoryServerConfigStorage(
             initial: const ServerConfig(publicUrl: 'https://trek.example.com'),
