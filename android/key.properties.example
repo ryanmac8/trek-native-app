@@ -1,0 +1,6 @@
+# Copy to android/key.properties (gitignored) to sign local release builds
+# with the upload keystore. A relative storeFile resolves against android/app/.
+storePassword=
+keyPassword=
+keyAlias=upload
+storeFile=../upload-keystore.jks
