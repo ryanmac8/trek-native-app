@@ -28,3 +28,38 @@ jobs:
 
       - name: Run tests
         run: flutter test
+
+  build-android:
+    name: Build Android (debug APK)
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Build APK
+        run: flutter build apk --debug
+
+  build-ios:
+    name: Build iOS (unsigned)
+    needs: test
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Build app
+        run: flutter build ios --debug --no-codesign

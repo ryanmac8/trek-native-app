@@ -1,0 +1,119 @@
+name: Release build
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  version:
+    name: Resolve version
+    runs-on: ubuntu-latest
+    outputs:
+      build-name: ${{ steps.version.outputs.build-name }}
+      build-number: ${{ steps.version.outputs.build-number }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read pubspec version and check tag
+        id: version
+        run: |
+          build_name="$(sed -n 's/^version:[[:space:]]*\([0-9][0-9.]*\).*/\1/p' pubspec.yaml)"
+          if [ -z "$build_name" ]; then
+            echo "::error::Could not read version from pubspec.yaml"
+            exit 1
+          fi
+          if [ "$GITHUB_REF_TYPE" = "tag" ] && [ "$GITHUB_REF_NAME" != "v$build_name" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match pubspec version v$build_name"
+            exit 1
+          fi
+          echo "build-name=$build_name" >> "$GITHUB_OUTPUT"
+          echo "build-number=$GITHUB_RUN_NUMBER" >> "$GITHUB_OUTPUT"
+
+  android:
+    name: Android app bundle (signed)
+    needs: version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Decode upload keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.TREK_ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.TREK_ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.TREK_ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.TREK_ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ] || [ -z "$KEYSTORE_PASSWORD" ] || [ -z "$KEY_ALIAS" ] || [ -z "$KEY_PASSWORD" ]; then
+            echo "::error::Android signing secrets are not configured; refusing to build a debug-signed release."
+            exit 1
+          fi
+          keystore="$RUNNER_TEMP/upload-keystore.jks"
+          echo "$KEYSTORE_BASE64" | base64 --decode > "$keystore"
+          {
+            echo "TREK_ANDROID_KEYSTORE_PATH=$keystore"
+            echo "TREK_ANDROID_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD"
+            echo "TREK_ANDROID_KEY_ALIAS=$KEY_ALIAS"
+            echo "TREK_ANDROID_KEY_PASSWORD=$KEY_PASSWORD"
+          } >> "$GITHUB_ENV"
+
+      - name: Build app bundle
+        run: >-
+          flutter build appbundle --release
+          --build-name=${{ needs.version.outputs.build-name }}
+          --build-number=${{ needs.version.outputs.build-number }}
+
+      - name: Verify bundle is signed with the upload key
+        run: |
+          aab=build/app/outputs/bundle/release/app-release.aab
+          jarsigner -verify "$aab"
+          if keytool -printcert -jarfile "$aab" | grep -q "CN=Android Debug"; then
+            echo "::error::Bundle is signed with the debug key"
+            exit 1
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-aab-${{ needs.version.outputs.build-name }}+${{ needs.version.outputs.build-number }}
+          path: build/app/outputs/bundle/release/app-release.aab
+          if-no-files-found: error
+
+  ios:
+    name: iOS app (unsigned)
+    needs: version
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Build app
+        run: >-
+          flutter build ios --release --no-codesign
+          --build-name=${{ needs.version.outputs.build-name }}
+          --build-number=${{ needs.version.outputs.build-number }}
+
+      - name: Archive Runner.app
+        run: ditto -c -k --keepParent build/ios/iphoneos/Runner.app Runner.app.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ios-app-unsigned-${{ needs.version.outputs.build-name }}+${{ needs.version.outputs.build-number }}
+          path: Runner.app.zip
+          if-no-files-found: error
