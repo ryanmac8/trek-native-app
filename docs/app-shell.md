@@ -17,6 +17,7 @@ Covers [issue #2](https://github.com/ryanmac8/trek-native-app/issues/2): state m
 | `apiClientProvider` | `ApiClient` | authenticated client for the rest of the API — see [networking-auth.md](networking-auth.md#authenticated-requests--sync-resilience) |
 | `biometricAuthServiceProvider` | `BiometricAuthService` | see [biometric-lock.md](biometric-lock.md) |
 | `appLockStateProvider` | `AppLockState` | ditto |
+| `appLockPreferenceStorageProvider` | `AppLockPreferenceStorage` | ditto |
 | `tripsApiProvider` | `TripsApi` | read-only `GET /api/trips` wrapper — see "Screens" below |
 | `appRouterProvider` | `GoRouter` | see below |
 
@@ -31,7 +32,7 @@ Covers [issue #2](https://github.com/ryanmac8/trek-native-app/issues/2): state m
 | `/login/mfa` | `MfaScreen` (reached with the `mfaToken` as `extra`) |
 | `/lock` | `BiometricLockScreen` — see [biometric-lock.md](biometric-lock.md) |
 | `/reconnect` | `ReconnectScreen` — see [networking-auth.md](networking-auth.md#authenticated-requests--sync-resilience) |
-| `/settings` | `SettingsScreen` — a hub listing sub-pages (currently just Networking), matching the pattern self-hosted apps like Immich use. Reached from `TripListScreen`'s AppBar; owns the logout action |
+| `/settings` | `SettingsScreen` — a hub listing sub-pages (currently just Networking) plus an inline "App lock" switch, matching the pattern self-hosted apps like Immich use. Reached from `TripListScreen`'s AppBar; owns the logout action |
 | `/settings/networking` | `NetworkingSettingsScreen` — edits the full `ServerConfig` (public URL, plus a list of private/LAN endpoints each tied to one Wi-Fi network) |
 | `/trips` | `TripListScreen` (wrapped in a `ShellRoute` with `SyncStatusShell`, along with `/trips/new` and `/trips/:tripId`) |
 | `/trips/new` | `CreateTripScreen` |
@@ -41,9 +42,9 @@ Covers [issue #2](https://github.com/ryanmac8/trek-native-app/issues/2): state m
 
 1. `ServerConfigStorage.read()` — no server configured → `/server-setup`.
 2. `AuthService.isAuthenticated.value` — no session → `/login`.
-3. `AppLockState.biometricsAvailable && !AppLockState.isUnlocked.value` — biometrics available but not unlocked this run → `/lock`.
+3. `AppLockState.needsUnlock` — biometrics available, app lock turned on, and not unlocked this run → `/lock`.
 
-`refreshListenable` is `Listenable.merge([authService.isAuthenticated, appLockState.isUnlocked])`, so the router re-evaluates on its own the moment either changes (login/logout/token-expiry/unlock) — screens that change this state never call `context.go()` themselves. `/reconnect` is a normal freely-visitable destination once authenticated+unlocked (reached by tapping the sync-status banner), not another gate — see [networking-auth.md](networking-auth.md#authenticated-requests--sync-resilience) for why it has to handle its own MFA step inline instead of pushing `/login/mfa`.
+`refreshListenable` is `Listenable.merge([authService.isAuthenticated, appLockState.isUnlocked, appLockState.lockEnabled])`, so the router re-evaluates on its own the moment any of them changes (login/logout/token-expiry/unlock/app-lock toggle) — screens that change this state never call `context.go()` themselves. `/reconnect` is a normal freely-visitable destination once authenticated+unlocked (reached by tapping the sync-status banner), not another gate — see [networking-auth.md](networking-auth.md#authenticated-requests--sync-resilience) for why it has to handle its own MFA step inline instead of pushing `/login/mfa`.
 
 `TrekApp` ([lib/app/trek_app.dart](../lib/app/trek_app.dart)) calls `AuthService.restoreSession()` once at startup, before building the router, so the first redirect decision reflects a session already on disk rather than the `isAuthenticated` default of `false`.
 
@@ -91,7 +92,7 @@ A native launch image can only ever be static (an OS-level constraint on both iO
 ## Screens
 
 - **`ServerSetupScreen`** — first-run only, collects just the public server URL via `ServerConfig.validateUrl`, to get onboarding to login as fast as possible. Writes to `ServerConfigStorage` and lets the redirect carry the user to `/login`.
-- **`SettingsScreen`** — a hub, not a flat form: a list of sub-pages (only `NetworkingSettingsScreen` so far), reached from `TripListScreen`'s AppBar. Owns the logout action in its own AppBar — an account-level action, not a trip-list one, so `TripListScreen` no longer has it.
+- **`SettingsScreen`** — a hub, not a flat form: a list of sub-pages (only `NetworkingSettingsScreen` so far) plus the "App lock" switch (see [biometric-lock.md](biometric-lock.md#turning-app-lock-on-and-off)), reached from `TripListScreen`'s AppBar. Owns the logout action in its own AppBar — an account-level action, not a trip-list one, so `TripListScreen` no longer has it.
 - **`NetworkingSettingsScreen`** — the full `ServerConfig` editor: the public URL, plus a list of private (LAN) endpoints, pre-filled from the current config. Each endpoint pairs a URL with the one Wi-Fi network it should be used on (an "Add endpoint" dialog collects both, with a "use current Wi-Fi network" shortcut, and pings the URL's `/api/health` before saving — reachability is advisory, offering "Save anyway" rather than blocking, per [offline-first.md](offline-first.md)). Private endpoints are a power-user setting, intentionally not asked for during first-run onboarding.
 - **`LoginScreen`** / **`MfaScreen`** — call `AuthService.login` / `verifyMfaLogin` directly; an `ApiException` is caught and shown inline (including `NetworkException` when offline — see [offline-first.md](offline-first.md)). Neither screen navigates on success; the router's `refreshListenable` does that. Both also mark the app unlocked (`AppLockState.isUnlocked`) on success, since typing a password/MFA code already proves identity — see [biometric-lock.md](biometric-lock.md).
 - **`BiometricLockScreen`** / **`ReconnectScreen`** — see [biometric-lock.md](biometric-lock.md) and [networking-auth.md](networking-auth.md#authenticated-requests--sync-resilience) respectively.

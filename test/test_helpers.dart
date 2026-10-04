@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:trek/app/app_lock_preference_storage.dart';
 import 'package:trek/auth/biometric_auth_service.dart';
 import 'package:trek/auth/session_token.dart';
 import 'package:trek/auth/token_storage.dart';
@@ -62,12 +63,36 @@ class FakeBiometricAuthService implements BiometricAuthService {
 
   final bool available;
   final bool authenticateResult;
+  int authenticateCalls = 0;
 
   @override
   Future<bool> isAvailable() async => available;
 
   @override
-  Future<bool> authenticate() async => authenticateResult;
+  Future<bool> authenticate() async {
+    authenticateCalls++;
+    return authenticateResult;
+  }
+}
+
+/// In-memory [AppLockPreferenceStorage] fake — avoids the
+/// `shared_preferences` platform channel. [failWrites] simulates a write
+/// error (e.g. disk full) so callers' rollback paths can be tested.
+class InMemoryAppLockPreferenceStorage implements AppLockPreferenceStorage {
+  InMemoryAppLockPreferenceStorage({this.enabled, this.failWrites = false});
+
+  /// `null` means nothing stored yet.
+  bool? enabled;
+  final bool failWrites;
+
+  @override
+  Future<bool> readEnabled() async => enabled ?? true;
+
+  @override
+  Future<void> writeEnabled(bool enabled) async {
+    if (failWrites) throw StateError('simulated preference write failure');
+    this.enabled = enabled;
+  }
 }
 
 /// In-memory [ServerConfigStorage] fake — avoids the `shared_preferences`
