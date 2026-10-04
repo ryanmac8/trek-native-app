@@ -12,6 +12,7 @@ import '../network/api_client.dart';
 import '../trips/trips_api.dart';
 import '../trips/trips_local_store.dart';
 import '../trips/trips_repository.dart';
+import 'app_lock_preference_storage.dart';
 import 'app_lock_state.dart';
 import 'router.dart';
 
@@ -93,6 +94,12 @@ final tripsRepositoryProvider = Provider<TripsRepository>((ref) {
     localStore: ref.watch(tripsLocalStoreProvider),
   );
 });
+
+/// Where the user's app-lock on/off choice is persisted — see
+/// [AppLockPreferenceStorage].
+final appLockPreferenceStorageProvider = Provider<AppLockPreferenceStorage>(
+  (ref) => PreferencesAppLockPreferenceStorage(),
+);
 
 /// Single long-lived instance for the app run — see [AppLockState].
 final appLockStateProvider = Provider<AppLockState>((ref) => AppLockState());

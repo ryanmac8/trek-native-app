@@ -33,10 +33,12 @@ Future<void> _pumpApp(
   WidgetTester tester, {
   required AuthService authService,
   required bool biometricsAvailable,
+  bool lockEnabled = true,
   FakeBiometricAuthService? biometricAuthService,
 }) async {
   final appLockState = AppLockState()
-    ..biometricsAvailable = biometricsAvailable;
+    ..biometricsAvailable = biometricsAvailable
+    ..lockEnabled.value = lockEnabled;
 
   await tester.pumpWidget(
     ProviderScope(
@@ -115,6 +117,23 @@ void main() {
       expect(find.text('Trips'), findsOneWidget);
     },
   );
+
+  testWidgets('skips the lock screen when the user has turned app lock off', (
+    tester,
+  ) async {
+    final biometricAuthService = FakeBiometricAuthService(available: true);
+    await _pumpApp(
+      tester,
+      authService: _authenticatedAuthService(),
+      biometricsAvailable: true,
+      lockEnabled: false,
+      biometricAuthService: biometricAuthService,
+    );
+
+    expect(find.text('Trek is locked'), findsNothing);
+    expect(find.text('Trips'), findsOneWidget);
+    expect(biometricAuthService.authenticateCalls, 0);
+  });
 
   testWidgets('log out instead returns to the login screen', (tester) async {
     final authService = _authenticatedAuthService();

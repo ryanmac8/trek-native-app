@@ -56,6 +56,14 @@ void main() {
             ),
           ),
           tripsLocalStoreProvider.overrideWithValue(InMemoryTripsLocalStore()),
+          // The lock screen prompts on appearance — fail it so the screen
+          // stays put for assertions.
+          biometricAuthServiceProvider.overrideWithValue(
+            FakeBiometricAuthService(
+              available: true,
+              authenticateResult: false,
+            ),
+          ),
         ],
         child: MaterialApp.router(routerConfig: router),
       ),
@@ -122,5 +130,45 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Trips'), findsOneWidget);
+  });
+
+  group('app lock', () {
+    setUp(() async {
+      await serverConfigStorage.write(
+        const ServerConfig(publicUrl: 'https://trek.example.com'),
+      );
+      authService.isAuthenticated.value = true;
+      appLockState.biometricsAvailable = true;
+    });
+
+    testWidgets('redirects to /lock while locked and app lock is on', (
+      tester,
+    ) async {
+      await pump(tester);
+
+      expect(find.text('Trek is locked'), findsOneWidget);
+    });
+
+    testWidgets('skips /lock when app lock is turned off', (tester) async {
+      appLockState.lockEnabled.value = false;
+
+      await pump(tester);
+
+      expect(find.text('Trek is locked'), findsNothing);
+      expect(find.text('Trips'), findsOneWidget);
+    });
+
+    testWidgets('re-evaluates the redirect when lockEnabled changes', (
+      tester,
+    ) async {
+      appLockState.lockEnabled.value = false;
+      await pump(tester);
+      expect(find.text('Trips'), findsOneWidget);
+
+      appLockState.lockEnabled.value = true;
+      await tester.pumpAndSettle();
+
+      expect(find.text('Trek is locked'), findsOneWidget);
+    });
   });
 }

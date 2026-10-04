@@ -19,9 +19,10 @@ import 'sync_status_shell.dart';
 /// Builds the app's [GoRouter], gating navigation on local (never network)
 /// reads: whether a server has been configured ([ServerConfigStorage]),
 /// whether a session is active ([AuthService.isAuthenticated]), and — if
-/// biometrics are available on the device — whether the app has been
-/// unlocked this run ([AppLockState.isUnlocked]). Re-evaluated automatically
-/// whenever either changes (login/logout/token expiry/unlock), since both
+/// biometrics are available on the device and the user hasn't turned app
+/// lock off — whether the app has been unlocked this run
+/// ([AppLockState.needsUnlock]). Re-evaluated automatically whenever any of
+/// these change (login/logout/token expiry/unlock/lock toggle), since they
 /// are combined into `refreshListenable`.
 GoRouter buildAppRouter({
   required AuthService authService,
@@ -34,6 +35,7 @@ GoRouter buildAppRouter({
     refreshListenable: Listenable.merge([
       authService.isAuthenticated,
       appLockState.isUnlocked,
+      appLockState.lockEnabled,
     ]),
     redirect: (context, state) async {
       final hasServer = await serverConfigStorage.read() != null;
@@ -48,9 +50,7 @@ GoRouter buildAppRouter({
       if (!authService.isAuthenticated.value) {
         return onLogin ? null : '/login';
       }
-      final needsUnlock =
-          appLockState.biometricsAvailable && !appLockState.isUnlocked.value;
-      if (needsUnlock) {
+      if (appLockState.needsUnlock) {
         return onLock ? null : '/lock';
       }
       if (onServerSetup || onLogin || onLock) {

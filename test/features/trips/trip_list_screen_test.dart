@@ -188,8 +188,8 @@ void main() {
               {
                 'id': 2,
                 'title': 'Near Future',
-                'start_date': '2026-08-01',
-                'end_date': '2026-08-10',
+                'start_date': '2029-08-01',
+                'end_date': '2029-08-10',
               },
               {
                 'id': 3,
@@ -235,8 +235,8 @@ void main() {
             {
               'id': 6,
               'title': 'Booked Trip',
-              'start_date': '2026-08-01',
-              'end_date': '2026-08-10',
+              'start_date': '2029-08-01',
+              'end_date': '2029-08-10',
             },
           ],
         }),
