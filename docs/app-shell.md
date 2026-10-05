@@ -55,12 +55,40 @@ An authenticated `ApiClient` (bearer token + 401 handling wired to `AuthService.
 | `widgets/skeleton_box.dart` | `SkeletonBox` (pulsing placeholder rect) and `SkeletonListTile` (its list-row-shaped composition) for content whose shape is known before it loads |
 | `widgets/app_card.dart` | `AppCard` — bordered, rounded content container, optionally tappable |
 | `widgets/app_list_row.dart` | `AppListRow` — standard leading/title/subtitle/trailing row; `SkeletonListTile` mirrors its layout |
+| `widgets/date_time_fields.dart` | `DateField` / `TimeField` — read-only, text-field-styled inputs that open the platform date/time picker; see [Form fields](#form-fields) |
+| `widgets/currency_amount_field.dart` | `CurrencyAmountField` (+ its `CurrencyAmountInputFormatter`) — money input for one currency; see [Form fields](#form-fields) |
+| `formats/trek_date_time.dart` | `TrekDateTime` — conversions to/from Trek's `YYYY-MM-DD` date and `HH:MM` time strings |
+| `formats/currency.dart` | `Currency` — Trek's selectable currency codes, symbols, decimal places, decimal separators, and amount text parsing/formatting |
 
 `PlaceCategory`'s colors/icons are copied from Trek's actual default category seed data (`server/src/db/seeds.ts` in the [backend repo](https://github.com/liketrek/TREK)), not from issue #2's checklist text — that list has a copy-paste error (`🍽️ Cafe` with no color; the real category is `Bar/Cafe`, `#f97316`, `☕`).
 
 **`PlaceCategory` represents the fresh-install defaults only — Trek's categories are per-user, editable data, not fixed constants.** Confirmed live against a real server: a user can rename a default category, recolor it, or change its icon (including to a non-emoji icon name — `GET /api/categories` on a real instance returned `{"name":"Cafe","icon":"Coffee",...}` for what started as `Bar/Cafe`/`☕`), and add entirely custom categories on top. `PlaceCategory` is a reasonable design-system default for previewing the palette (see the trip dashboard's Places tab) but is not what [#5](https://github.com/ryanmac8/trek-native-app/issues/5) (Places & categories) should build feature logic against — that needs a real `Category` model fetched from `/api/categories`, not this hardcoded enum.
 
-`SkeletonBox`/`AppCard`/`AppListRow` don't have a call site yet — no screen has real list data to load. They're built ahead of [#3](https://github.com/ryanmac8/trek-native-app/issues/3) onward the same way the color/spacing tokens were: so the first feature screen composes them instead of inventing its own. Form fields, date/time pickers, and currency input are still genuinely deferred — no screen shape to design them against yet.
+`SkeletonBox`/`AppCard`/`AppListRow` and the form fields below don't have a call site yet — no screen has real list data to load or edit. They're built ahead of [#3](https://github.com/ryanmac8/trek-native-app/issues/3) onward the same way the color/spacing tokens were: so the first feature screen composes them instead of inventing its own.
+
+### Form fields
+
+**`DateField` / `TimeField`** are stateless: the parent owns `value` (`DateTime?` / `TimeOfDay?`) and rebuilds with whatever `onChanged` reports. Tapping opens `showDatePicker` / `showTimePicker`; dismissing the picker reports nothing, and an optional clear button (`clearable: true`) reports `null`. Both are styled like a text field (label, leading icon, `errorText`), so they line up with typed fields in the same form.
+
+- `DateField` displays e.g. `Sat, Mar 7, 2026`, reports picks as local midnight, and opens on `value`, else `initialPickerDate`, else today — clamped into `firstDate`..`lastDate` (default: ten years either side of today).
+- `TimeField` displays in the device's 12/24-hour preference and opens on `value`, else `initialPickerTime` (default 09:00).
+
+Trek stores dates as `YYYY-MM-DD` strings (day dates, trip start/end, vacay entries, expense dates) and times as `HH:MM` (assignment times, day-note time labels; some reservation time columns hold a local `YYYY-MM-DDTHH:MM`). `TrekDateTime.formatDate`/`parseDate` and `formatTime`/`parseTime` convert between those and `DateTime`/`TimeOfDay`; the parsers return `null` for anything malformed or out of range (`2026-02-30`, `24:00`) rather than throwing.
+
+**`CurrencyAmountField`** is a `TextFormField` for an amount in one ISO 4217 `currency` (e.g. a trip's `currency`). It follows the money rules of Trek's web client (`client/src/utils/formatters.ts`, `client/src/components/Budget/BudgetPanel.constants.ts`), held in `Currency`:
+
+| Rule | Behavior |
+| --- | --- |
+| Decimal places | 0 for JPY, KRW, VND, CLP, ISK, HUF (by Trek convention), BIF, DJF, GNF, KMF, PYG, RWF, UGX, VUV, XAF, XOF, XPF; 3 for BHD, IQD, JOD, KWD, LYD, OMR, TND; 2 otherwise |
+| Decimal separator | The currency's home convention, independent of device locale — `,` for EUR, CZK, PLN, SEK, NOK, DKK, TRY, BRL, IDR, ZAR, MAD, HUF, RON, BGN, HRK, ISK, RUB, UAH, KGS, VND, CLP, COP, ARS; `.` otherwise |
+| Typing | Digits plus one separator and at most the currency's decimal places; either `,` or `.` is accepted and rewritten to the currency's separator. No grouping separators or signs |
+| Seeding | `initialValue` is cent-rounded and padded to the currency's decimals (`4.9` EUR → `4,90`, `500` JPY → `500`) |
+| Output | `onChanged` reports a `double` (or `null` while empty), ready to send as a JSON number such as a budget item's `total_price` |
+| Prefix | The currency's symbol (`€`, `$`, `¥`), falling back to its code |
+
+`required: true` fails `Form` validation while empty. Changing `currency` on a mounted field keeps the typed number and swaps its separator; decimals the new currency doesn't allow fail validation instead of being rounded away. `Currency.codes` is Trek's selectable set; `Currency.selectableWith(saved)` appends a saved code outside it so editing an older item doesn't blank its currency. `Currency.cleanAmount` rounds to whole cents to drop float noise from uneven splits, matching the backend's money arithmetic.
+
+These widgets do no I/O, so they behave the same offline; forms built from them write to local state first, per [offline-first.md](offline-first.md).
 
 ## App icon, splash image, and startup animation
 
@@ -92,5 +120,5 @@ A native launch image can only ever be static (an OS-level constraint on both iO
 Left for later slices of issue #2, noted here rather than guessed at:
 
 - Local caching strategy (what's cached, invalidation) — belongs with [#21](https://github.com/ryanmac8/trek-native-app/issues/21)'s offline-sync mechanism.
-- Form fields, date/time pickers, currency input — no screen shape to design them against yet.
+- A currency picker over `Currency.codes`, and a combined date-range field — no screen shape to design them against yet.
 - Android adaptive icon foreground/background layers — the launcher icon currently uses the simpler legacy (non-adaptive) path.
