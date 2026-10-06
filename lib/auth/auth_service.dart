@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import '../network/api_client.dart';
+import 'local_data.dart';
 import 'session_token.dart';
 import 'token_storage.dart';
 
@@ -33,15 +34,32 @@ class MfaRequired extends LoginResult {
 /// user must log in again. [apiClient] should be an unauthenticated
 /// [ApiClient] (no bearer token injected), since login/logout happen before
 /// or independent of an existing session.
+///
+/// Account-scoped local data registered in [localData] is cleared on
+/// [logout], and on login when the signing-in account (server public URL
+/// from [getServerUrl] + JWT user id) differs from the one recorded in
+/// [ownerStorage]. A dead session (expiry, 401) keeps local data, so the
+/// same account signing back in still has its offline cache.
 class AuthService {
   AuthService({
     required ApiClient apiClient,
     required TokenStorage tokenStorage,
+    LocalDataRegistry? localData,
+    LocalDataOwnerStorage? ownerStorage,
+    Future<String?> Function()? getServerUrl,
   }) : _apiClient = apiClient,
-       _tokenStorage = tokenStorage;
+       _tokenStorage = tokenStorage,
+       localData = localData ?? LocalDataRegistry(),
+       _ownerStorage = ownerStorage,
+       _getServerUrl = getServerUrl;
 
   final ApiClient _apiClient;
   final TokenStorage _tokenStorage;
+  final LocalDataOwnerStorage? _ownerStorage;
+  final Future<String?> Function()? _getServerUrl;
+
+  /// Account-scoped stores cleared on logout and account switch.
+  final LocalDataRegistry localData;
 
   /// Whether a non-expired session is currently stored. Updated after every
   /// login/logout/expiry check so UI can listen and react (e.g. redirect to
@@ -75,8 +93,7 @@ class AuthService {
     }
 
     final token = SessionToken.fromJwt(response['token'] as String);
-    await _tokenStorage.write(token);
-    isAuthenticated.value = true;
+    await _startSession(token);
     return LoggedIn(token);
   }
 
@@ -100,8 +117,7 @@ class AuthService {
             as Map<String, dynamic>;
 
     final token = SessionToken.fromJwt(response['token'] as String);
-    await _tokenStorage.write(token);
-    isAuthenticated.value = true;
+    await _startSession(token);
     return token;
   }
 
@@ -113,6 +129,8 @@ class AuthService {
       // server-side cookie clear succeeds.
     } finally {
       await _tokenStorage.clear();
+      await localData.clearAll();
+      await _clearOwner();
       isAuthenticated.value = false;
     }
   }
@@ -135,11 +153,71 @@ class AuthService {
   /// Wire this into an authenticated [ApiClient]'s `onUnauthorized` callback.
   /// A 401 from Trek (e.g. the token's `password_version` was invalidated by
   /// a password change on another device) means the session is dead — there
-  /// is nothing to refresh, so this always clears local state and returns
-  /// `false` (never retry).
+  /// is nothing to refresh, so this always clears the stored session and
+  /// returns `false` (never retry). Account-scoped local data is kept for
+  /// when the same account signs back in.
   Future<bool> handleUnauthorized() async {
     await _tokenStorage.clear();
     isAuthenticated.value = false;
     return false;
+  }
+
+  /// Persists [token] as the active session, first clearing account-scoped
+  /// local data unless it is known to belong to this same account — so a
+  /// different account never sees the previous one's cached data.
+  Future<void> _startSession(SessionToken token) async {
+    final owner = await _ownerOf(token);
+    final previous = await _readOwner();
+    if (owner == null || previous != owner) {
+      await localData.clearAll();
+    }
+    if (owner != null) {
+      await _writeOwner(owner);
+    } else {
+      await _clearOwner();
+    }
+    await _tokenStorage.write(token);
+    isAuthenticated.value = true;
+  }
+
+  Future<LocalDataOwner?> _ownerOf(SessionToken token) async {
+    final userId = token.userId;
+    final getServerUrl = _getServerUrl;
+    if (userId == null || getServerUrl == null) return null;
+    try {
+      final serverUrl = await getServerUrl();
+      if (serverUrl == null) return null;
+      return LocalDataOwner(serverUrl: serverUrl, userId: userId);
+    } on Object catch (error) {
+      debugPrint('Failed to read server URL for local data owner: $error');
+      return null;
+    }
+  }
+
+  // Owner-storage failures never block login/logout: an unreadable owner is
+  // treated as unknown, which errs on the side of clearing local data.
+  Future<LocalDataOwner?> _readOwner() async {
+    try {
+      return await _ownerStorage?.read();
+    } on Object catch (error) {
+      debugPrint('Failed to read local data owner: $error');
+      return null;
+    }
+  }
+
+  Future<void> _writeOwner(LocalDataOwner owner) async {
+    try {
+      await _ownerStorage?.write(owner);
+    } on Object catch (error) {
+      debugPrint('Failed to write local data owner: $error');
+    }
+  }
+
+  Future<void> _clearOwner() async {
+    try {
+      await _ownerStorage?.clear();
+    } on Object catch (error) {
+      debugPrint('Failed to clear local data owner: $error');
+    }
   }
 }

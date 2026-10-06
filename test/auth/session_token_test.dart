@@ -49,4 +49,37 @@ void main() {
       expect(restored.expiresAt, DateTime.utc(2030, 1, 1));
     });
   });
+
+  group('SessionToken.userId', () {
+    test('reads the id claim', () {
+      final token = SessionToken.fromJwt(fakeJwt({'id': 42, 'exp': 1 << 31}));
+
+      expect(token.userId, 42);
+    });
+
+    test('is null when the id claim is missing or not an int', () {
+      expect(SessionToken.fromJwt(fakeJwt({'exp': 1 << 31})).userId, isNull);
+      expect(
+        SessionToken.fromJwt(fakeJwt({'id': '42', 'exp': 1 << 31})).userId,
+        isNull,
+      );
+    });
+
+    test('survives a storage round-trip', () {
+      final token = SessionToken.fromJwt(fakeJwt({'id': 7, 'exp': 1 << 31}));
+
+      expect(SessionToken.fromStorageJson(token.toStorageJson()).userId, 7);
+    });
+
+    test('is null for an unreadable token', () {
+      expect(
+        SessionToken(token: 'not-a-jwt', expiresAt: DateTime.utc(2030)).userId,
+        isNull,
+      );
+      expect(
+        SessionToken(token: 'a.%%%.c', expiresAt: DateTime.utc(2030)).userId,
+        isNull,
+      );
+    });
+  });
 }

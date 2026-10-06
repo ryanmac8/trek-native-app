@@ -11,9 +11,11 @@ First slice of [issue #1](https://github.com/ryanmac8/trek-native-app/issues/1):
 | [lib/config/server_config_resolver.dart](../lib/config/server_config_resolver.dart) | `ServerConfigResolver.resolveBaseUrl()` — combines `ServerConfigStorage` and `WifiNetworkInfo` into the single base URL to use for the current network. |
 | [lib/network/api_exception.dart](../lib/network/api_exception.dart) | Typed exceptions: `NetworkException`, `UnauthorizedException`, `ForbiddenException`, `ValidationException`, `ServerException` (with status code) — each optionally carries Trek's `code` field (e.g. `AUTH_REQUIRED`). |
 | [lib/network/api_client.dart](../lib/network/api_client.dart) | Wraps `package:http`. Resolves paths against a base URL (fixed via `baseUrl`, or resolved per-request via `getBaseUrl`), JSON-encodes/decodes bodies, attaches a bearer token via an injected `getAccessToken` callback, and maps non-2xx responses to the exceptions above. |
-| [lib/auth/session_token.dart](../lib/auth/session_token.dart) | `SessionToken` — Trek's single session JWT, decoding its `exp` claim client-side. |
+| [lib/auth/session_token.dart](../lib/auth/session_token.dart) | `SessionToken` — Trek's single session JWT, decoding its `exp` and `id` (user id) claims client-side. |
 | [lib/auth/token_storage.dart](../lib/auth/token_storage.dart) | `TokenStorage` interface + `SecureTokenStorage`, which persists the token in the iOS Keychain / Android Keystore via `flutter_secure_storage`. |
 | [lib/auth/auth_service.dart](../lib/auth/auth_service.dart) | `login`, `verifyMfaLogin`, `logout`, `currentAccessToken` (expiry-aware, local-only check), `handleUnauthorized`, and an `isAuthenticated` listenable. |
+| [lib/auth/local_data.dart](../lib/auth/local_data.dart) | `AccountScopedData` (a clearable account-owned store), `LocalDataRegistry` (all such stores on the device), and `LocalDataOwner`/`LocalDataOwnerStorage` (which account the local data belongs to). |
+| [lib/features/auth/logout_action.dart](../lib/features/auth/logout_action.dart) | `confirmAndLogout` — the logout entry point for UI; confirms first when unsynced changes would be discarded. |
 
 ## Server configuration
 
@@ -38,3 +40,20 @@ Error responses are `{ error: string, code?: string }`. Validation failures (400
 ## Composition
 
 `ApiClient` and `AuthService` have no circular dependency: `AuthService` holds an unauthenticated `ApiClient` for the auth endpoints. A separate, authenticated `ApiClient` for the rest of the app uses `authService.currentAccessToken` as `getAccessToken`, `authService.handleUnauthorized` as `onUnauthorized`, and `serverConfigResolver.resolveBaseUrl` as `getBaseUrl` — so a 401 clears the session and `isAuthenticated` reflects it, and every request targets whichever of the public/private server URLs matches the current Wi-Fi network.
+
+## Logout and account-scoped local data
+
+Local data belongs to one account, identified by a `LocalDataOwner`: the configured server's public URL plus the user id from the session JWT's `id` claim (Trek signs `{ id, pv, remember? }`). The owner of the data currently on the device is persisted by `PreferencesLocalDataOwnerStorage` under the `shared_preferences` key `trek.local_data.owner`.
+
+Feature stores implement `AccountScopedData` (`name`, `clear()`, and optionally `unsyncedChangeCount()`) and register with the `LocalDataRegistry` that `AuthService` is constructed with (`localDataRegistryProvider`). `LocalDataRegistry.clearAll()` clears every store, continues past a store that throws, and returns the failures rather than throwing.
+
+| Event | Session token | Account-scoped local data | Recorded owner |
+| --- | --- | --- | --- |
+| `logout()` | Cleared | Cleared | Cleared |
+| `login()` / `verifyMfaLogin()` as the recorded owner | Written | Kept | Kept |
+| `login()` / `verifyMfaLogin()` as anyone else, or with no recorded owner | Written | Cleared before the token is written | Replaced |
+| Token expiry, `handleUnauthorized()` (401) | Cleared | Kept | Kept |
+
+Logout's `POST /api/auth/logout` only clears the web client's cookie (it is `@Public` and returns `{ success: true }`), so it is best-effort: local clearing happens whether or not it succeeds, including offline. Keeping local data across an expired or rejected session means the same account signing back in still has its offline cache; the login-time owner check is what stops a different account (or the same user id on a different server) from seeing it. If the owner can't be determined — no `id` claim, no server URL, or owner storage failing — the data is treated as belonging to someone else and cleared.
+
+Clearing discards writes that haven't reached the server. `confirmAndLogout` sums `unsyncedChangeCount()` across the registry and, if it is non-zero, asks the user to confirm before logging out.

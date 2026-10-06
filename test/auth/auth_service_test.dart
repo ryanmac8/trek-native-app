@@ -1,9 +1,11 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:trek/auth/auth_service.dart';
+import 'package:trek/auth/local_data.dart';
 import 'package:trek/auth/session_token.dart';
 import 'package:trek/auth/token_storage.dart';
 import 'package:trek/network/api_client.dart';
@@ -257,4 +259,192 @@ void main() {
       expect(await storage.read(), isNull);
     });
   });
+
+  group('AuthService local data', () {
+    const server = 'https://trek.example.com';
+    const owner1 = LocalDataOwner(serverUrl: server, userId: 1);
+
+    String jwtFor(int userId) => fakeJwt({
+      'id': userId,
+      'exp':
+          DateTime.now()
+              .toUtc()
+              .add(const Duration(hours: 1))
+              .millisecondsSinceEpoch ~/
+          1000,
+    });
+
+    late FakeAccountScopedData cache;
+    late InMemoryLocalDataOwnerStorage owners;
+    late String serverUrl;
+
+    setUp(() {
+      cache = FakeAccountScopedData(name: 'trips');
+      owners = InMemoryLocalDataOwnerStorage();
+      serverUrl = server;
+    });
+
+    AuthService buildAuth(MockClientHandler handler) => AuthService(
+      apiClient: ApiClient(baseUrl: server, httpClient: MockClient(handler)),
+      tokenStorage: storage,
+      localData: LocalDataRegistry()..register(cache),
+      ownerStorage: owners,
+      getServerUrl: () async => serverUrl,
+    );
+
+    AuthService loginAs(int userId) =>
+        buildAuth((request) async => _json({'token': jwtFor(userId)}));
+
+    test('keeps local data when the same account signs back in', () async {
+      owners.owner = owner1;
+
+      await loginAs(1).login(email: 'a@trek.app', password: 'pw');
+
+      expect(cache.wasCleared, isFalse);
+      expect(owners.owner, owner1);
+    });
+
+    test('clears local data when a different user signs in', () async {
+      owners.owner = owner1;
+
+      await loginAs(2).login(email: 'b@trek.app', password: 'pw');
+
+      expect(cache.wasCleared, isTrue);
+      expect(owners.owner, const LocalDataOwner(serverUrl: server, userId: 2));
+    });
+
+    test('clears local data when the same user id signs in on another '
+        'server', () async {
+      owners.owner = owner1;
+      serverUrl = 'https://other.example.com';
+
+      await loginAs(1).login(email: 'a@trek.app', password: 'pw');
+
+      expect(cache.wasCleared, isTrue);
+      expect(owners.owner?.serverUrl, 'https://other.example.com');
+    });
+
+    test('clears local data when no previous owner is recorded', () async {
+      await loginAs(1).login(email: 'a@trek.app', password: 'pw');
+
+      expect(cache.wasCleared, isTrue);
+      expect(owners.owner, owner1);
+    });
+
+    test('clears local data when the token has no user id', () async {
+      owners.owner = owner1;
+      final auth = buildAuth(
+        (request) async => _json({
+          'token': fakeJwt({
+            'exp':
+                DateTime.now()
+                    .toUtc()
+                    .add(const Duration(hours: 1))
+                    .millisecondsSinceEpoch ~/
+                1000,
+          }),
+        }),
+      );
+
+      await auth.login(email: 'a@trek.app', password: 'pw');
+
+      expect(cache.wasCleared, isTrue);
+      expect(owners.owner, isNull);
+      expect(auth.isAuthenticated.value, isTrue);
+    });
+
+    test('applies the same account check after MFA verification', () async {
+      owners.owner = owner1;
+
+      await loginAs(2).verifyMfaLogin(mfaToken: 'mfa', code: '123456');
+
+      expect(cache.wasCleared, isTrue);
+      expect(owners.owner?.userId, 2);
+    });
+
+    test('still signs in, clearing data, when owner storage fails', () async {
+      final auth = AuthService(
+        apiClient: ApiClient(
+          baseUrl: server,
+          httpClient: MockClient(
+            (request) async => _json({'token': jwtFor(1)}),
+          ),
+        ),
+        tokenStorage: storage,
+        localData: LocalDataRegistry()..register(cache),
+        ownerStorage: _ThrowingOwnerStorage(),
+        getServerUrl: () async => server,
+      );
+
+      await auth.login(email: 'a@trek.app', password: 'pw');
+
+      expect(cache.wasCleared, isTrue);
+      expect(auth.isAuthenticated.value, isTrue);
+    });
+
+    test('logout clears local data and the recorded owner', () async {
+      owners.owner = owner1;
+      final auth = buildAuth((request) async => _json({'success': true}));
+      auth.isAuthenticated.value = true;
+
+      await auth.logout();
+
+      expect(cache.wasCleared, isTrue);
+      expect(owners.owner, isNull);
+      expect(auth.isAuthenticated.value, isFalse);
+    });
+
+    test('logout clears local data while offline', () async {
+      owners.owner = owner1;
+      await storage.write(
+        SessionToken(token: jwtFor(1), expiresAt: DateTime.utc(2030)),
+      );
+      final auth = buildAuth(
+        (request) async => throw const SocketException('no route to host'),
+      );
+      auth.isAuthenticated.value = true;
+
+      await auth.logout();
+
+      expect(cache.wasCleared, isTrue);
+      expect(owners.owner, isNull);
+      expect(await storage.read(), isNull);
+      expect(auth.isAuthenticated.value, isFalse);
+    });
+
+    test('logout completes even if a store fails to clear', () async {
+      final broken = FakeAccountScopedData(name: 'broken', failOnClear: true);
+      final auth = buildAuth((request) async => _json({'success': true}));
+      auth.localData.register(broken);
+      auth.isAuthenticated.value = true;
+
+      await auth.logout();
+
+      expect(cache.wasCleared, isTrue);
+      expect(auth.isAuthenticated.value, isFalse);
+    });
+
+    test('a 401 keeps local data for the same account', () async {
+      owners.owner = owner1;
+      final auth = buildAuth((request) async => _json({}));
+      auth.isAuthenticated.value = true;
+
+      await auth.handleUnauthorized();
+
+      expect(cache.wasCleared, isFalse);
+      expect(owners.owner, owner1);
+    });
+  });
+}
+
+class _ThrowingOwnerStorage implements LocalDataOwnerStorage {
+  @override
+  Future<LocalDataOwner?> read() async => throw StateError('read failed');
+
+  @override
+  Future<void> write(LocalDataOwner owner) async =>
+      throw StateError('write failed');
+
+  @override
+  Future<void> clear() async => throw StateError('clear failed');
 }
