@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../auth/auth_service.dart';
+import '../auth/local_data.dart';
 import '../auth/token_storage.dart';
 import '../config/server_config.dart';
 import '../config/server_config_resolver.dart';
@@ -41,10 +42,24 @@ final tokenStorageProvider = Provider<TokenStorage>(
   (ref) => SecureTokenStorage(),
 );
 
+/// Every feature store holding account data registers itself here (from the
+/// provider that creates it) so logout and account switches clear it.
+final localDataRegistryProvider = Provider<LocalDataRegistry>(
+  (ref) => LocalDataRegistry(),
+);
+
+final localDataOwnerStorageProvider = Provider<LocalDataOwnerStorage>(
+  (ref) => PreferencesLocalDataOwnerStorage(),
+);
+
 final authServiceProvider = Provider<AuthService>((ref) {
+  final serverConfigStorage = ref.watch(serverConfigStorageProvider);
   return AuthService(
     apiClient: ref.watch(authApiClientProvider),
     tokenStorage: ref.watch(tokenStorageProvider),
+    localData: ref.watch(localDataRegistryProvider),
+    ownerStorage: ref.watch(localDataOwnerStorageProvider),
+    getServerUrl: () async => (await serverConfigStorage.read())?.publicUrl,
   );
 });
 

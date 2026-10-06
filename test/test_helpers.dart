@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:trek/auth/local_data.dart';
 import 'package:trek/auth/session_token.dart';
 import 'package:trek/auth/token_storage.dart';
 import 'package:trek/config/server_config.dart';
@@ -62,4 +63,48 @@ class InMemoryServerConfigStorage implements ServerConfigStorage {
 
   @override
   Future<void> clear() async => _config = null;
+}
+
+/// In-memory [AccountScopedData] that records whether it was cleared, with
+/// an adjustable unsynced-change count and an optional failing [clear].
+class FakeAccountScopedData extends AccountScopedData {
+  FakeAccountScopedData({
+    this.name = 'fake store',
+    this.unsynced = 0,
+    this.failOnClear = false,
+  });
+
+  @override
+  final String name;
+  int unsynced;
+  bool failOnClear;
+  int clearCount = 0;
+
+  bool get wasCleared => clearCount > 0;
+
+  @override
+  Future<void> clear() async {
+    if (failOnClear) throw StateError('simulated clear failure');
+    clearCount++;
+    unsynced = 0;
+  }
+
+  @override
+  Future<int> unsyncedChangeCount() async => unsynced;
+}
+
+/// In-memory [LocalDataOwnerStorage] fake — avoids `shared_preferences`.
+class InMemoryLocalDataOwnerStorage implements LocalDataOwnerStorage {
+  InMemoryLocalDataOwnerStorage({LocalDataOwner? initial}) : owner = initial;
+
+  LocalDataOwner? owner;
+
+  @override
+  Future<LocalDataOwner?> read() async => owner;
+
+  @override
+  Future<void> write(LocalDataOwner owner) async => this.owner = owner;
+
+  @override
+  Future<void> clear() async => owner = null;
 }
