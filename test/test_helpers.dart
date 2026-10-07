@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:trek/addons/addon_flags.dart';
+import 'package:trek/addons/addon_flags_local_store.dart';
 import 'package:trek/auth/session_token.dart';
 import 'package:trek/auth/token_storage.dart';
 import 'package:trek/config/server_config.dart';
@@ -62,4 +64,23 @@ class InMemoryServerConfigStorage implements ServerConfigStorage {
 
   @override
   Future<void> clear() async => _config = null;
+}
+
+/// In-memory [AddonFlagsLocalStore] fake. Set [throwOnAccess] to simulate
+/// `shared_preferences` failing.
+class InMemoryAddonFlagsLocalStore implements AddonFlagsLocalStore {
+  final Map<String, CachedAddonFlags> entries = {};
+  bool throwOnAccess = false;
+
+  @override
+  Future<CachedAddonFlags?> read(String server) async {
+    if (throwOnAccess) throw StateError('simulated storage failure');
+    return entries[server];
+  }
+
+  @override
+  Future<void> write(String server, CachedAddonFlags flags) async {
+    if (throwOnAccess) throw StateError('simulated storage failure');
+    entries[server] = flags;
+  }
 }

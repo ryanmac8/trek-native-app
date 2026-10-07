@@ -6,5 +6,6 @@
 - [app-shell.md](app-shell.md) — state management, navigation, and design system
 - [networking-auth.md](networking-auth.md) — HTTP client, server config, and the auth flow
 - [offline-first.md](offline-first.md) — the cross-cutting offline-first principle
+- [feature-flags.md](feature-flags.md) — server add-on flags (`GET /api/addons`) and how the UI gates on them
 
 Day-to-day progress is tracked on GitHub: [issues](https://github.com/ryanmac8/trek-native-app/issues) and the [Trek MVP project board](https://github.com/users/ryanmac8/projects/1).
