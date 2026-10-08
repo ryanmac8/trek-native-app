@@ -66,7 +66,7 @@ class DateField extends StatelessWidget {
   Widget build(BuildContext context) {
     final localizations = MaterialLocalizations.of(context);
     final date = value;
-    return _PickerField(
+    return PickerField(
       label: label,
       icon: Icons.calendar_today_outlined,
       text: date == null
@@ -122,7 +122,7 @@ class TimeField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final time = value;
-    return _PickerField(
+    return PickerField(
       label: label,
       icon: Icons.schedule_outlined,
       text: time == null
@@ -141,17 +141,20 @@ class TimeField extends StatelessWidget {
   }
 }
 
-/// The shared look of [DateField]/[TimeField]: a read-only input decorated
-/// like a text field, so pickers and typed fields line up in one form.
-class _PickerField extends StatelessWidget {
-  const _PickerField({
+/// The shared look of every picker-backed field ([DateField], [TimeField],
+/// `CurrencyField`): a read-only input decorated like a text field, so
+/// pickers and typed fields line up in one form. [text] is the displayed
+/// value (null while empty); [onClear], when given, adds a clear button.
+class PickerField extends StatelessWidget {
+  const PickerField({
+    super.key,
     required this.label,
     required this.icon,
     required this.text,
     required this.onTap,
-    required this.onClear,
-    required this.enabled,
-    required this.errorText,
+    this.onClear,
+    this.enabled = true,
+    this.errorText,
   });
 
   final String label;
