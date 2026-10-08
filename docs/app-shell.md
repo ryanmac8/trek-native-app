@@ -57,7 +57,10 @@ An authenticated `ApiClient` (bearer token + 401 handling wired to `AuthService.
 | `widgets/app_list_row.dart` | `AppListRow` — standard leading/title/subtitle/trailing row; `SkeletonListTile` mirrors its layout |
 | `widgets/date_time_fields.dart` | `DateField` / `TimeField` — read-only, text-field-styled inputs that open the platform date/time picker; see [Form fields](#form-fields) |
 | `widgets/currency_amount_field.dart` | `CurrencyAmountField` (+ its `CurrencyAmountInputFormatter`) — money input for one currency; see [Form fields](#form-fields) |
+| `widgets/date_range_field.dart` | `DateRangeField` — start/end `DateField` pair that keeps a trip-style range consistent; see [Form fields](#form-fields) |
+| `widgets/currency_field.dart` | `CurrencyField` + `showCurrencyPicker` — currency selector over Trek's selectable codes; see [Form fields](#form-fields) |
 | `formats/trek_date_time.dart` | `TrekDateTime` — conversions to/from Trek's `YYYY-MM-DD` date and `HH:MM` time strings |
+| `formats/trek_date_range.dart` | `TrekDateRange` — an optional start/end day pair with Trek's trip-range rules (start-shift, span, validation) |
 | `formats/currency.dart` | `Currency` — Trek's selectable currency codes, symbols, decimal places, decimal separators, and amount text parsing/formatting |
 
 `PlaceCategory`'s colors/icons are copied from Trek's actual default category seed data (`server/src/db/seeds.ts` in the [backend repo](https://github.com/liketrek/TREK)), not from issue #2's checklist text — that list has a copy-paste error (`🍽️ Cafe` with no color; the real category is `Bar/Cafe`, `#f97316`, `☕`).
@@ -87,6 +90,20 @@ Trek stores dates as `YYYY-MM-DD` strings (day dates, trip start/end, vacay entr
 | Prefix | The currency's symbol (`€`, `$`, `¥`), falling back to its code |
 
 `required: true` fails `Form` validation while empty. Changing `currency` on a mounted field keeps the typed number and swaps its separator; decimals the new currency doesn't allow fail validation instead of being rounded away. `Currency.codes` is Trek's selectable set; `Currency.selectableWith(saved)` appends a saved code outside it so editing an older item doesn't blank its currency. `Currency.cleanAmount` rounds to whole cents to drop float noise from uneven splits, matching the backend's money arithmetic.
+
+**`DateRangeField`** edits a `TrekDateRange` (`start`/`end`, each nullable — Trek trips may be undated) as two `DateField`s, following Trek's web trip form (`client/src/components/Trips/TripFormModal.tsx`) and the server's trip-range checks (`server/src/nest/trips/`):
+
+| Rule | Behavior |
+| --- | --- |
+| Picking a start | When the end is unset or before the new start, the end becomes the new start (a one-day range). When both days were set, the end moves with the start so the range keeps its length. With only an end set and the new start on or before it, the end stays |
+| End picker | Opens on the start; days before the start can't be picked, nor days past `maxDays` (default `TrekDateRange.maxTripDays` = 999, Trek's `MAX_TRIP_DAYS`; `null` for no limit) |
+| Span | `TrekDateRange.spanDays` counts calendar days with both ends included (same day = 1), unaffected by DST |
+| Validation | `TrekDateRange.validate` returns the server's messages — `End date must be after start date` (span < 1) or `A trip can span at most N days` — and shows under the end field; a range with a day unset isn't checked (on trip create the server derives the missing day as a 7-day range). `errorText` overrides it |
+| Clearing | Each field has a clear button by default (`clearable`); clearing the start keeps the end and vice versa |
+
+Send each day as `TrekDateTime.formatDate(...)` or `null` (a trip's `start_date`/`end_date`).
+
+**`CurrencyField`** shows a currency as Trek's web pickers label it — `EUR (€)`, or just the code when it has no symbol (`currencyLabel`) — and opens **`showCurrencyPicker`**: a bottom sheet listing `Currency.selectableWith(selected)` (so a saved code outside the list, e.g. `HRK`, stays pickable), with the current selection pinned first and checked. Its search box matches codes and symbols case-insensitively, with an exact code match ranked first. Dismissing the sheet reports nothing. `showCurrencyPicker` returns the chosen code and can be used on its own (e.g. a currency switch in an app bar).
 
 These widgets do no I/O, so they behave the same offline; forms built from them write to local state first, per [offline-first.md](offline-first.md).
 
@@ -120,5 +137,4 @@ A native launch image can only ever be static (an OS-level constraint on both iO
 Left for later slices of issue #2, noted here rather than guessed at:
 
 - Local caching strategy (what's cached, invalidation) — belongs with [#21](https://github.com/ryanmac8/trek-native-app/issues/21)'s offline-sync mechanism.
-- A currency picker over `Currency.codes`, and a combined date-range field — no screen shape to design them against yet.
 - Android adaptive icon foreground/background layers — the launcher icon currently uses the simpler legacy (non-adaptive) path.
