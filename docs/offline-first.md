@@ -4,7 +4,7 @@ This is a cross-cutting design principle, not a Phase 3 feature to bolt on later
 
 ## What this means in practice
 
-- **Local storage is the source of truth for the UI.** Screens read from a local store (database/cache), not directly from `ApiClient`. The network's job is to keep that local store in sync in the background — the UI should never block on a network round-trip just to show data the app has already seen.
+- **Local storage is the source of truth for the UI.** Screens read from a local store (the shared [read cache](local-cache.md) or a feature's own store), not directly from `ApiClient`. The network's job is to keep that local store in sync in the background — the UI should never block on a network round-trip just to show data the app has already seen.
 - **Every write is local-first.** A user editing a trip, checking off a packing item, or adding a budget item should see it take effect immediately, persisted locally, with the server sync happening (and retrying) independently. Don't design a mutation as "call the API, then update the UI from the response" — design it as "update local state, then sync."
 - **Reads must degrade gracefully.** If a screen has no cached data yet and the network is down, show an explicit offline/empty state — never an infinite spinner or an uncaught `NetworkException`.
 - **Writes must queue, not fail silently or block.** If a mutation can't reach the server, it should be retried (with backoff) once connectivity returns, not lost. This implies some durable local queue/outbox once real mutations exist — a concrete mechanism is still open, tracked in #21.

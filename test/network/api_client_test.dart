@@ -221,4 +221,81 @@ void main() {
       );
     });
   });
+
+  group('ApiClient.getIfChanged', () {
+    test('sends If-None-Match and returns NotModified on a 304', () async {
+      final client = ApiClient(
+        baseUrl: 'https://trek.example.com',
+        httpClient: MockClient((request) async {
+          expect(request.method, 'GET');
+          expect(request.headers['If-None-Match'], 'W/"38-abc"');
+          return http.Response('', 304);
+        }),
+      );
+
+      final response = await client.getIfChanged(
+        '/api/trips',
+        etag: 'W/"38-abc"',
+      );
+
+      expect(response, isA<NotModified>());
+    });
+
+    test('returns the body and the response ETag on a 200', () async {
+      final client = ApiClient(
+        baseUrl: 'https://trek.example.com',
+        httpClient: MockClient((request) async {
+          expect(request.headers.containsKey('If-None-Match'), isFalse);
+          return http.Response(
+            jsonEncode({'trips': []}),
+            200,
+            headers: {'etag': 'W/"d-xyz"'},
+          );
+        }),
+      );
+
+      final response = await client.getIfChanged('/api/trips');
+
+      expect(
+        response,
+        isA<Modified>()
+            .having((r) => r.body, 'body', {'trips': []})
+            .having((r) => r.etag, 'etag', 'W/"d-xyz"'),
+      );
+    });
+
+    test('keeps If-None-Match on the retry after a 401', () async {
+      var calls = 0;
+      final client = ApiClient(
+        baseUrl: 'https://trek.example.com',
+        onUnauthorized: () async => true,
+        httpClient: MockClient((request) async {
+          calls++;
+          expect(request.headers['If-None-Match'], 'W/"1"');
+          return calls == 1
+              ? _json({'error': 'Expired'}, 401)
+              : http.Response('', 304);
+        }),
+      );
+
+      final response = await client.getIfChanged('/api/trips', etag: 'W/"1"');
+
+      expect(response, isA<NotModified>());
+      expect(calls, 2);
+    });
+
+    test('maps errors exactly like get()', () async {
+      final client = ApiClient(
+        baseUrl: 'https://trek.example.com',
+        httpClient: MockClient((request) async {
+          throw http.ClientException('Connection refused');
+        }),
+      );
+
+      await expectLater(
+        client.getIfChanged('/api/trips', etag: 'W/"1"'),
+        throwsA(isA<NetworkException>()),
+      );
+    });
+  });
 }

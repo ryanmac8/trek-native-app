@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:trek/auth/session_token.dart';
 import 'package:trek/auth/token_storage.dart';
+import 'package:trek/cache/cache_entry.dart';
+import 'package:trek/cache/cache_store.dart';
 import 'package:trek/config/server_config.dart';
 
 /// Builds a syntactically-valid, unsigned JWT string for tests — Trek's
@@ -62,4 +64,30 @@ class InMemoryServerConfigStorage implements ServerConfigStorage {
 
   @override
   Future<void> clear() async => _config = null;
+}
+
+/// In-memory [CacheStore] fake — avoids the `shared_preferences` platform
+/// channel. [failWrites]/[failReads] simulate storage errors.
+class InMemoryCacheStore implements CacheStore {
+  final Map<String, CacheEntry> entries = {};
+  bool failReads = false;
+  bool failWrites = false;
+
+  @override
+  Future<CacheEntry?> read(String key) async {
+    if (failReads) throw StateError('simulated storage read failure');
+    return entries[key];
+  }
+
+  @override
+  Future<void> write(String key, CacheEntry entry) async {
+    if (failWrites) throw StateError('simulated storage write failure');
+    entries[key] = entry;
+  }
+
+  @override
+  Future<void> remove(String key) async => entries.remove(key);
+
+  @override
+  Future<Set<String>> keys() async => entries.keys.toSet();
 }
