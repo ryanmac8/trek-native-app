@@ -3,6 +3,9 @@ import 'package:go_router/go_router.dart';
 
 import '../auth/auth_service.dart';
 import '../auth/token_storage.dart';
+import '../cache/cache_scope.dart';
+import '../cache/cache_store.dart';
+import '../cache/read_cache.dart';
 import '../config/server_config.dart';
 import '../config/server_config_resolver.dart';
 import '../config/wifi_network_info.dart';
@@ -46,6 +49,25 @@ final authServiceProvider = Provider<AuthService>((ref) {
     apiClient: ref.watch(authApiClientProvider),
     tokenStorage: ref.watch(tokenStorageProvider),
   );
+});
+
+/// Durable storage behind [readCacheProvider].
+final cacheStoreProvider = Provider<CacheStore>(
+  (ref) => PreferencesCacheStore(),
+);
+
+/// The app's shared read cache (see docs/local-cache.md), scoped to the
+/// configured server and the logged-in account.
+final readCacheProvider = Provider<ReadCache>((ref) {
+  final cache = ReadCache(
+    store: ref.watch(cacheStoreProvider),
+    scope: accountCacheScope(
+      serverConfigStorage: ref.watch(serverConfigStorageProvider),
+      tokenStorage: ref.watch(tokenStorageProvider),
+    ),
+  );
+  ref.onDispose(cache.dispose);
+  return cache;
 });
 
 final appRouterProvider = Provider<GoRouter>((ref) {

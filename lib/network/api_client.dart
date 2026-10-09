@@ -8,6 +8,28 @@ import 'api_exception.dart';
 
 enum HttpMethod { get, post, put, patch, delete }
 
+/// Result of [ApiClient.getIfChanged]: either a fresh body or confirmation
+/// that the caller's copy is still current.
+sealed class ConditionalResponse {
+  const ConditionalResponse();
+}
+
+/// The server sent a (new) representation. [etag] is the response's `ETag`
+/// header, if any — Trek's Express server attaches a weak ETag to every
+/// JSON response.
+class Modified extends ConditionalResponse {
+  const Modified(this.body, this.etag);
+
+  final dynamic body;
+  final String? etag;
+}
+
+/// The server answered 304 Not Modified: the representation identified by
+/// the `If-None-Match` ETag is still current.
+class NotModified extends ConditionalResponse {
+  const NotModified();
+}
+
 /// Thin wrapper around [http.Client] that centralizes base-URL resolution,
 /// auth-header injection, JSON encoding/decoding, and error mapping so
 /// feature code never touches raw HTTP concerns directly.
@@ -53,6 +75,24 @@ class ApiClient {
   Future<dynamic> get(String path, {Map<String, dynamic>? query}) =>
       _send(HttpMethod.get, path, query: query);
 
+  /// Conditional GET: sends [etag] as `If-None-Match` (when non-null) and
+  /// returns [NotModified] on a 304 instead of re-downloading the body.
+  /// Errors map exactly as for [get].
+  Future<ConditionalResponse> getIfChanged(
+    String path, {
+    Map<String, dynamic>? query,
+    String? etag,
+  }) async {
+    final response = await _request(
+      HttpMethod.get,
+      path,
+      query: query,
+      extraHeaders: etag == null ? null : {'If-None-Match': etag},
+    );
+    if (response.statusCode == 304) return const NotModified();
+    return Modified(_decode(response), response.headers['etag']);
+  }
+
   Future<dynamic> post(String path, {Object? body}) =>
       _send(HttpMethod.post, path, body: body);
 
@@ -70,6 +110,17 @@ class ApiClient {
     String path, {
     Object? body,
     Map<String, dynamic>? query,
+  }) async => _decode(await _request(method, path, body: body, query: query));
+
+  /// Sends the request (retrying once after a 401 if `onUnauthorized` says
+  /// so) and returns the raw response, mapping transport failures to
+  /// [NetworkException].
+  Future<http.Response> _request(
+    HttpMethod method,
+    String path, {
+    Object? body,
+    Map<String, dynamic>? query,
+    Map<String, String>? extraHeaders,
     bool isRetry = false,
   }) async {
     final baseUrl = await _resolveBaseUrl();
@@ -82,6 +133,7 @@ class ApiClient {
     if (token != null) {
       headers['Authorization'] = 'Bearer $token';
     }
+    if (extraHeaders != null) headers.addAll(extraHeaders);
 
     final encodedBody = body == null ? null : jsonEncode(body);
 
@@ -104,11 +156,18 @@ class ApiClient {
     if (response.statusCode == 401 && !isRetry && _onUnauthorized != null) {
       final shouldRetry = await _onUnauthorized();
       if (shouldRetry) {
-        return _send(method, path, body: body, query: query, isRetry: true);
+        return _request(
+          method,
+          path,
+          body: body,
+          query: query,
+          extraHeaders: extraHeaders,
+          isRetry: true,
+        );
       }
     }
 
-    return _decode(response);
+    return response;
   }
 
   Future<http.Response> _dispatch(
