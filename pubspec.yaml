@@ -61,6 +61,9 @@ dev_dependencies:
   # In-memory shared_preferences fake used by server_config_test.dart.
   shared_preferences_platform_interface: ^2.4.1
 
+  # PNG decoding for launcher_icon_test.dart's safe-zone/layer checks.
+  image: ^4.8.0
+
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is
   # activated in the `analysis_options.yaml` file located at the root of your
@@ -119,9 +122,14 @@ flutter_launcher_icons:
   ios: true
   image_path: assets/icon/icon.png
   remove_alpha_ios: true
-  # Android adaptive icons aren't split into separate foreground/background
-  # layers yet — see docs/app-shell.md — so this uses the simpler legacy
-  # (non-adaptive) icon path for now.
+  # Android 8+ adaptive icon layers (see docs/app-shell.md). The foreground
+  # PNG already places the mark inside the 66dp safe zone, so no extra inset;
+  # the same white-on-transparent mark doubles as the Android 13+ themed
+  # (monochrome) icon.
+  adaptive_icon_background: assets/icon/adaptive_background.png
+  adaptive_icon_foreground: assets/icon/adaptive_foreground.png
+  adaptive_icon_foreground_inset: 0
+  adaptive_icon_monochrome: assets/icon/adaptive_foreground.png
 
 flutter_native_splash:
   # Matches SplashScreen's gradient dark end (lib/app/splash_screen.dart)

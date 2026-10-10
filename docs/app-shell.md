@@ -64,13 +64,27 @@ An authenticated `ApiClient` (bearer token + 401 handling wired to `AuthService.
 
 ## App icon, splash image, and startup animation
 
-`assets/icon/` holds three renders of Trek's actual T-mark (the geometric logo from the [web client](https://github.com/liketrek/TREK)'s `client/public/icons/icon.svg`, not a placeholder):
+`assets/icon/` holds renders of Trek's actual T-mark (the geometric logo from the [web client](https://github.com/liketrek/TREK)'s `client/public/icons/icon.svg`, not a placeholder):
 
 | File | Used by |
 | --- | --- |
 | `icon.png` | `flutter_launcher_icons` (see `pubspec.yaml`) — full-bleed mark + gradient background, generates the iOS/Android app icon |
 | `splash.png` | `flutter_native_splash` — mark only, transparent background, composited onto a solid `#0F172A` (the icon gradient's dark end) set via `flutter_native_splash`'s `color` config — generates the native static launch image shown before Flutter starts |
 | `mark.png` | [lib/app/splash_screen.dart](../lib/app/splash_screen.dart) — the same asset, animated in-app |
+| `adaptive_foreground.png` | `flutter_launcher_icons`'s `adaptive_icon_foreground` **and** `adaptive_icon_monochrome` — the white mark on transparent, scaled to 68% of `mark.png` and centered so every opaque pixel sits inside the adaptive icon's 66dp safe-zone circle (of the 108dp canvas) |
+| `adaptive_background.png` | `flutter_launcher_icons`'s `adaptive_icon_background` — opaque diagonal gradient `#1E293B` (top-left) → `#0F172A` (bottom-right), the same two stops as `icon.png` and `SplashScreen` |
+
+### Android launcher icon
+
+Android gets two icon forms from the same config:
+
+- **Legacy** (`mipmap-<density>/ic_launcher.png`, generated from `icon.png`) — used by launchers on Android 7.1 and below.
+- **Adaptive** (`mipmap-anydpi-v26/ic_launcher.xml`, Android 8+) — an `<adaptive-icon>` with three layers: `@drawable/ic_launcher_background`, `@drawable/ic_launcher_foreground`, and `@drawable/ic_launcher_monochrome`, each rendered per density under `drawable-<density>/` at the 108dp layer size (108px at mdpi through 432px at xxxhdpi). The launcher applies its own mask shape (circle, squircle, rounded square) and parallax to these layers. Both layer references use `android:inset="0%"` (`adaptive_icon_foreground_inset: 0`) because the safe-zone padding is already baked into `adaptive_foreground.png`.
+- **Themed icon** (Android 13+) — the monochrome layer reuses the foreground PNG; Android reads only its alpha channel and tints it to the wallpaper-derived theme color when the user turns on themed icons.
+
+The `<monochrome>` element is ignored below Android 13, so one XML serves every 8+ device. iOS has no equivalent layering and keeps using the single `icon.png` render.
+
+[test/app/launcher_icon_test.dart](../test/app/launcher_icon_test.dart) checks the generated XML's layers and insets, each density's layer sizes, the foreground's safe-zone bound and white-only opaque pixels, and the background's gradient endpoints.
 
 The source SVG uses small rounded corners (cubic bezier segments); the PNGs were rendered by parsing the path's vertices directly and filling straight-edged polygons (rounding is imperceptible at icon/splash sizes) rather than pulling in a native SVG-rasterization toolchain for one-time asset generation. Regenerate with `dart run flutter_launcher_icons` / `dart run flutter_native_splash:create` after changing the source PNGs or their config in `pubspec.yaml`.
 
@@ -93,4 +107,3 @@ Left for later slices of issue #2, noted here rather than guessed at:
 
 - Local caching strategy (what's cached, invalidation) — belongs with [#21](https://github.com/ryanmac8/trek-native-app/issues/21)'s offline-sync mechanism.
 - Form fields, date/time pickers, currency input — no screen shape to design them against yet.
-- Android adaptive icon foreground/background layers — the launcher icon currently uses the simpler legacy (non-adaptive) path.
