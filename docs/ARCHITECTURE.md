@@ -17,4 +17,6 @@ Tracked in [ROADMAP.md](ROADMAP.md), Phase 1 foundation issues:
 - **State management, navigation, design system** ([#2](https://github.com/ryanmac8/trek-native-app/issues/2)) — Riverpod for state/DI, go_router for navigation (auth/server-gated redirects), a Material 3 design system (colors, typography, spacing, Trek's place category colors), a global snackbar messenger, the real Trek app icon/splash image, and an animated startup screen. See [app-shell.md](app-shell.md). Open: local caching strategy (belongs with #21) and the rest of the reusable UI kit (form fields, date/time pickers, currency input).
 - **Offline-first sync mechanism** ([#21](https://github.com/ryanmac8/trek-native-app/issues/21)) — local database choice, conflict resolution strategy, and write-retry/outbox mechanism are undecided. See [offline-first.md](offline-first.md).
 
+Phase 3, [#28 Onboarding](https://github.com/ryanmac8/trek-native-app/issues/28): permission priming exists for location (Wi-Fi SSID detection); see [permission-priming.md](permission-priming.md). Open: notification and calendar priming, which wait until a feature needs those permissions.
+
 Decisions here should get filled in as those issues are worked, rather than guessed at ahead of time.

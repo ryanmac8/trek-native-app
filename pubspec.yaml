@@ -54,6 +54,10 @@ dependencies:
   # Navigation (lib/app/router.dart).
   go_router: ^17.3.0
 
+  # OS permission status/requests behind the in-app priming flow
+  # (lib/permissions/). iOS permissions are enabled per-macro in ios/Podfile.
+  permission_handler: ^13.0.2
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

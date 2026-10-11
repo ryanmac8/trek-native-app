@@ -21,11 +21,11 @@ Trek is self-hosted — there is no fixed vendor-run API URL. `ServerConfig` hol
 
 `ServerConfigResolver` wires this to the device: it reads the stored `ServerConfig`, asks `WifiNetworkInfo` for the current SSID, and returns the resolved URL — passed as `ApiClient`'s `getBaseUrl`, so the effective server address is re-evaluated on every request rather than fixed at app startup.
 
-Reading a real Wi-Fi SSID requires OS permissions the app does not yet request (that's a UI concern, pending #2/#27):
-- **Android:** `ACCESS_FINE_LOCATION` is declared in `AndroidManifest.xml`, but the runtime permission prompt isn't wired up yet.
-- **iOS:** `NSLocationWhenInUseUsageDescription` is declared in `Info.plist`, but the app doesn't yet request location authorization, and the `com.apple.developer.networking.wifi-info` entitlement (Xcode's "Access WiFi Information" capability) hasn't been added to the Xcode project — that capability also requires a paid Apple Developer team, not a personal one.
+Reading a real Wi-Fi SSID requires location access on both platforms. `ServerSetupScreen` requests it through the permission priming flow whenever a private URL and trusted networks are saved (see [permission-priming.md](permission-priming.md)):
+- **Android:** `ACCESS_FINE_LOCATION` + `ACCESS_COARSE_LOCATION` are declared in `AndroidManifest.xml` and requested at runtime.
+- **iOS:** `NSLocationWhenInUseUsageDescription` is declared in `Info.plist` and requested at runtime, but the `com.apple.developer.networking.wifi-info` entitlement (Xcode's "Access WiFi Information" capability) hasn't been added to the Xcode project — that capability also requires a paid Apple Developer team, not a personal one.
 
-Until those are in place, `WifiNetworkInfo.currentSsid()` returns `null` and `ServerConfigResolver` always falls back to the public URL — the private-URL feature degrades to a no-op rather than breaking anything.
+Without the permission (or, on iOS, the entitlement), `WifiNetworkInfo.currentSsid()` returns `null` and `ServerConfigResolver` always falls back to the public URL — the private-URL feature degrades to a no-op rather than breaking anything.
 
 ## Auth contract
 
