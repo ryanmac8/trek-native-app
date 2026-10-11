@@ -14,6 +14,7 @@ First slice of [issue #2](https://github.com/ryanmac8/trek-native-app/issues/2):
 | `authApiClientProvider` | `ApiClient` | unauthenticated client for `/api/auth/*`, using `serverConfigResolverProvider` as `getBaseUrl` |
 | `tokenStorageProvider` | `TokenStorage` | `SecureTokenStorage` |
 | `authServiceProvider` | `AuthService` | wraps `authApiClientProvider` + `tokenStorageProvider` |
+| `permissionGatewayProvider` / `primingStorageProvider` / `permissionPrimerProvider` | `PermissionGateway` / `PrimingStorage` / `PermissionPrimer` | see [permission-priming.md](permission-priming.md) |
 | `appRouterProvider` | `GoRouter` | see below |
 
 An authenticated `ApiClient` (bearer token + 401 handling wired to `AuthService.handleUnauthorized`) isn't provided yet — that belongs to whichever feature first needs to call an authenticated endpoint.

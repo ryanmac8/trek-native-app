@@ -7,6 +7,9 @@ import '../config/server_config.dart';
 import '../config/server_config_resolver.dart';
 import '../config/wifi_network_info.dart';
 import '../network/api_client.dart';
+import '../permissions/permission_gateway.dart';
+import '../permissions/permission_primer.dart';
+import '../permissions/priming_storage.dart';
 import 'router.dart';
 
 /// Where the self-hosted server URL is persisted (see
@@ -45,6 +48,23 @@ final authServiceProvider = Provider<AuthService>((ref) {
   return AuthService(
     apiClient: ref.watch(authApiClientProvider),
     tokenStorage: ref.watch(tokenStorageProvider),
+  );
+});
+
+final permissionGatewayProvider = Provider<PermissionGateway>(
+  (ref) => DevicePermissionGateway(),
+);
+
+final primingStorageProvider = Provider<PrimingStorage>(
+  (ref) => PreferencesPrimingStorage(),
+);
+
+/// Pre-prompt explanations for OS permissions — see
+/// docs/permission-priming.md.
+final permissionPrimerProvider = Provider<PermissionPrimer>((ref) {
+  return PermissionPrimer(
+    gateway: ref.watch(permissionGatewayProvider),
+    storage: ref.watch(primingStorageProvider),
   );
 });
 

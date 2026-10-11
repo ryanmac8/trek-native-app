@@ -3,6 +3,9 @@ import 'dart:convert';
 import 'package:trek/auth/session_token.dart';
 import 'package:trek/auth/token_storage.dart';
 import 'package:trek/config/server_config.dart';
+import 'package:trek/permissions/app_permission.dart';
+import 'package:trek/permissions/permission_gateway.dart';
+import 'package:trek/permissions/priming_storage.dart';
 
 /// Builds a syntactically-valid, unsigned JWT string for tests — Trek's
 /// backend is the only thing that verifies the signature; the client only
@@ -62,4 +65,55 @@ class InMemoryServerConfigStorage implements ServerConfigStorage {
 
   @override
   Future<void> clear() async => _config = null;
+}
+
+/// Scripted [PermissionGateway] — no platform channel. [statuses] is the
+/// current status per permission; [requestResults] is what the OS prompt
+/// "answers" (and becomes the new status).
+class FakePermissionGateway implements PermissionGateway {
+  FakePermissionGateway({
+    Map<AppPermission, AppPermissionStatus>? statuses,
+    Map<AppPermission, AppPermissionStatus>? requestResults,
+  }) : statuses = statuses ?? {},
+       requestResults = requestResults ?? {};
+
+  final Map<AppPermission, AppPermissionStatus> statuses;
+  final Map<AppPermission, AppPermissionStatus> requestResults;
+  final List<AppPermission> requested = [];
+  int openSettingsCalls = 0;
+
+  @override
+  Future<AppPermissionStatus> status(AppPermission permission) async =>
+      statuses[permission] ?? AppPermissionStatus.denied;
+
+  @override
+  Future<AppPermissionStatus> request(AppPermission permission) async {
+    requested.add(permission);
+    final result = requestResults[permission] ?? AppPermissionStatus.denied;
+    statuses[permission] = result;
+    return result;
+  }
+
+  @override
+  Future<bool> openSettings() async {
+    openSettingsCalls++;
+    return true;
+  }
+}
+
+/// In-memory [PrimingStorage] fake.
+class InMemoryPrimingStorage implements PrimingStorage {
+  final Map<AppPermission, DateTime> declines = {};
+
+  @override
+  Future<DateTime?> declinedAt(AppPermission permission) async =>
+      declines[permission];
+
+  @override
+  Future<void> recordDecline(AppPermission permission, DateTime at) async =>
+      declines[permission] = at;
+
+  @override
+  Future<void> clearDecline(AppPermission permission) async =>
+      declines.remove(permission);
 }

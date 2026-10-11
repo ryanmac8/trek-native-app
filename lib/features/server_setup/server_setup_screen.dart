@@ -2,9 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../app/app_messenger.dart';
 import '../../app/providers.dart';
 import '../../config/server_config.dart';
 import '../../design/app_spacing.dart';
+import '../../permissions/app_permission.dart';
+import '../../permissions/permission_primer.dart';
 
 /// First screen a fresh install lands on: Trek is self-hosted, so there is
 /// no default server to point at (see docs/networking-auth.md). Collects
@@ -63,6 +66,22 @@ class _ServerSetupScreenState extends ConsumerState<ServerSetupScreen> {
               trustedWifiNetworks: trustedWifiNetworks,
             ),
           );
+
+      // Private-URL switching needs the Wi-Fi SSID, which the OS only
+      // reveals with location access. The config is already saved, so a
+      // refusal just means the public URL is always used.
+      if (privateUrl != null && trustedWifiNetworks.isNotEmpty && mounted) {
+        setState(() => _isSaving = false);
+        final outcome = await ref
+            .read(permissionPrimerProvider)
+            .ensure(context, AppPermission.location, userInitiated: true);
+        if (outcome != PrimingOutcome.granted) {
+          AppMessenger.showInfo(
+            'Trek will use your public server address until location '
+            'access is allowed.',
+          );
+        }
+      }
 
       if (mounted) context.go('/login');
     } on FormatException catch (e) {

@@ -2,11 +2,13 @@
     <!-- Needed to read the current Wi-Fi SSID (network_info_plus), so the
          app can pick the private vs. public server URL. ACCESS_FINE_LOCATION
          is required by Android to return a real SSID rather than a redacted
-         placeholder; the runtime permission prompt itself is a UI concern
-         (not yet built, see docs/networking-auth.md). -->
+         placeholder; Android 12+ ignores a FINE request unless COARSE is
+         declared alongside it. Requested at runtime via the permission
+         priming flow (docs/permission-priming.md). -->
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
     <application
         android:label="trek"
         android:name="${applicationName}"
