@@ -15,8 +15,9 @@ First slice of [issue #2](https://github.com/ryanmac8/trek-native-app/issues/2):
 | `tokenStorageProvider` | `TokenStorage` | `SecureTokenStorage` |
 | `authServiceProvider` | `AuthService` | wraps `authApiClientProvider` + `tokenStorageProvider` |
 | `appRouterProvider` | `GoRouter` | see below |
+| `apiClientProvider` | `ApiClient` | authenticated client for the rest of the API: bearer token from `AuthService.currentAccessToken` (a local read), 401 → `AuthService.handleUnauthorized` |
 
-An authenticated `ApiClient` (bearer token + 401 handling wired to `AuthService.handleUnauthorized`) isn't provided yet — that belongs to whichever feature first needs to call an authenticated endpoint.
+Feature providers (e.g. the share-import ones in [share-import.md](share-import.md)) live in the same file.
 
 ## Navigation
 
@@ -29,13 +30,15 @@ An authenticated `ApiClient` (bearer token + 401 handling wired to `AuthService.
 | `/login/mfa` | `MfaScreen` (reached with the `mfaToken` as `extra`) |
 | `/trips` | `TripListScreen` |
 | `/trips/:tripId` | `TripDashboardScreen` |
+| `/share-import` | `ShareImportScreen` — see [share-import.md](share-import.md) |
 
-`redirect` gates navigation on two local (never network) reads, evaluated on every navigation:
+`redirect` gates navigation on local (never network) reads, evaluated on every navigation:
 
 1. `ServerConfigStorage.read()` — no server configured → `/server-setup`.
 2. `AuthService.isAuthenticated.value` — no session → `/login`.
+3. `incomingShareProvider` — a map link shared from another app is pending → `/share-import`; nothing pending → `/share-import` goes to `/trips`.
 
-`AuthService.isAuthenticated` (a `ValueNotifier<bool>`, so it doubles as a `Listenable`) is passed as `refreshListenable`, so the router re-evaluates on its own the moment a login/logout/token-expiry flips it — screens that change auth state never call `context.go()` themselves.
+`AuthService.isAuthenticated` (a `ValueNotifier<bool>`, so it doubles as a `Listenable`) and the incoming-share notifier are merged into `refreshListenable`, so the router re-evaluates on its own the moment a login/logout/token-expiry flips auth state or a share arrives or is dismissed — screens that change auth state never call `context.go()` themselves.
 
 `TrekApp` ([lib/app/trek_app.dart](../lib/app/trek_app.dart)) calls `AuthService.restoreSession()` once at startup, before building the router, so the first redirect decision reflects a session already on disk rather than the `isAuthenticated` default of `false`.
 

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../design/app_theme.dart';
+import '../features/share_import/share_import_coordinator.dart';
 import 'app_messenger.dart';
 import 'providers.dart';
 import 'splash_screen.dart';
@@ -32,10 +33,19 @@ class _TrekAppState extends ConsumerState<TrekApp> {
   // completes and would otherwise silently drop the message.
   Object? _startupError;
 
+  ShareImportCoordinator? _shareImports;
+  bool _initialFlushScheduled = false;
+
   @override
   void initState() {
     super.initState();
     _startup = _initialize();
+  }
+
+  @override
+  void dispose() {
+    _shareImports?.dispose();
+    super.dispose();
   }
 
   Future<void> _initialize() async {
@@ -55,6 +65,19 @@ class _TrekAppState extends ConsumerState<TrekApp> {
       debugPrint('TrekApp: session restore failed: $error\n$stackTrace');
       _startupError = error;
     }
+    // After restoreSession, so a share that launched the app is routed on
+    // the router's first redirect with real auth state.
+    try {
+      _shareImports = ShareImportCoordinator(
+        intake: ref.read(shareIntakeProvider),
+        incoming: ref.read(incomingShareProvider),
+        repository: ref.read(shareImportRepositoryProvider),
+        authService: ref.read(authServiceProvider),
+      );
+      await _shareImports!.start();
+    } catch (error, stackTrace) {
+      debugPrint('TrekApp: share intake failed: $error\n$stackTrace');
+    }
   }
 
   @override
@@ -71,6 +94,12 @@ class _TrekAppState extends ConsumerState<TrekApp> {
             AppMessenger.showError(
               'Could not restore your session. Please log in.',
             );
+          });
+        }
+        if (!_initialFlushScheduled) {
+          _initialFlushScheduled = true;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _shareImports?.flush();
           });
         }
         return MaterialApp.router(
