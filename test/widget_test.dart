@@ -26,6 +26,10 @@ void main() {
               tokenStorage: InMemoryTokenStorage(),
             ),
           ),
+          shareIntakeProvider.overrideWithValue(FakeShareIntake()),
+          shareImportStoreProvider.overrideWithValue(
+            InMemoryShareImportStore(),
+          ),
         ],
         child: const TrekApp(),
       ),
@@ -53,6 +57,10 @@ void main() {
               apiClient: ApiClient(baseUrl: 'https://placeholder.example.com'),
               tokenStorage: ThrowingTokenStorage(),
             ),
+          ),
+          shareIntakeProvider.overrideWithValue(FakeShareIntake()),
+          shareImportStoreProvider.overrideWithValue(
+            InMemoryShareImportStore(),
           ),
         ],
         child: const TrekApp(),
