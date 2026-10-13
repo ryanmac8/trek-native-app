@@ -220,5 +220,47 @@ void main() {
         throwsA(isA<NetworkException>()),
       );
     });
+
+    test('put() sends extra headers alongside the defaults', () async {
+      final client = ApiClient(
+        baseUrl: 'https://trek.example.com',
+        httpClient: MockClient((request) async {
+          expect(request.method, 'PUT');
+          expect(request.headers['X-Base-Updated-At'], '2026-10-01 10:00:00');
+          expect(
+            request.headers['Content-Type'],
+            startsWith('application/json'),
+          );
+          return _json({'ok': true}, 200);
+        }),
+      );
+
+      await client.put(
+        '/api/trips/20/places/501',
+        body: {'notes': null},
+        headers: {'X-Base-Updated-At': '2026-10-01 10:00:00'},
+      );
+    });
+
+    test('throws ConflictException carrying the body on 409', () async {
+      final client = ApiClient(
+        baseUrl: 'https://trek.example.com',
+        httpClient: MockClient(
+          (request) async => _json({
+            'error': 'conflict',
+            'server': {'id': 501},
+          }, 409),
+        ),
+      );
+
+      await expectLater(
+        client.put('/api/trips/20/places/501', body: {}),
+        throwsA(
+          isA<ConflictException>()
+              .having((e) => e.message, 'message', 'conflict')
+              .having((e) => e.body?['server'], 'server', {'id': 501}),
+        ),
+      );
+    });
   });
 }

@@ -98,4 +98,108 @@ void main() {
       expect(restored.category, isNull);
     });
   });
+
+  group('Place.applyFields / sync status', () {
+    const place = Place(
+      id: 501,
+      tripId: 20,
+      name: 'Fergburger',
+      notes: 'Old note',
+      price: 18,
+      updatedAt: '2026-10-01 10:00:00',
+    );
+
+    test('changes only the keys present; explicit null clears', () {
+      final updated = place.applyFields({
+        'notes': null,
+        'address': 'Shotover St',
+      });
+
+      expect(updated.name, 'Fergburger');
+      expect(updated.price, 18);
+      expect(updated.notes, isNull);
+      expect(updated.address, 'Shotover St');
+      expect(updated.updatedAt, place.updatedAt);
+    });
+
+    test('updated_at and sync status round-trip through the cache', () {
+      final restored = Place.fromCacheJson(
+        place.withSyncStatus(PlaceSyncStatus.conflict).toCacheJson(),
+      );
+
+      expect(restored.updatedAt, '2026-10-01 10:00:00');
+      expect(restored.syncStatus, PlaceSyncStatus.conflict);
+    });
+
+    test('a cache entry without a sync status reads as synced', () {
+      final restored = Place.fromCacheJson({
+        'id': 1,
+        'trip_id': 20,
+        'name': 'Cached before sync status existed',
+      });
+
+      expect(restored.syncStatus, PlaceSyncStatus.synced);
+    });
+
+    test('fromJson reads description, address, and updated_at', () {
+      final parsed = Place.fromJson({
+        'id': 1,
+        'trip_id': 20,
+        'name': 'Skyline',
+        'description': 'Gondola',
+        'address': 'Brecon St',
+        'updated_at': '2026-10-01 10:00:00',
+      });
+
+      expect(parsed.description, 'Gondola');
+      expect(parsed.address, 'Brecon St');
+      expect(parsed.updatedAt, '2026-10-01 10:00:00');
+      expect(parsed.syncStatus, PlaceSyncStatus.synced);
+    });
+  });
+
+  group('PlaceInput', () {
+    test('toCreateJson trims, upper-cases currency, and drops blanks', () {
+      const input = PlaceInput(
+        name: '  Fergburger ',
+        description: '   ',
+        price: 18.5,
+        currency: 'nzd',
+        notes: '',
+      );
+
+      expect(input.toCreateJson(), {
+        'name': 'Fergburger',
+        'price': 18.5,
+        'currency': 'NZD',
+      });
+    });
+
+    test('changesFrom sends only differing fields, clears as null', () {
+      const original = Place(
+        id: 501,
+        tripId: 20,
+        name: 'Fergburger',
+        address: 'Shotover St',
+        notes: 'Old note',
+        price: 18,
+        currency: 'NZD',
+      );
+      const input = PlaceInput(
+        name: 'Fergburger',
+        address: 'Shotover St',
+        notes: '',
+        price: 20,
+        currency: 'NZD',
+      );
+
+      expect(input.changesFrom(original), {'notes': null, 'price': 20.0});
+    });
+
+    test('changesFrom is empty when nothing changed', () {
+      const original = Place(id: 501, tripId: 20, name: 'Fergburger');
+
+      expect(PlaceInput.fromPlace(original).changesFrom(original), isEmpty);
+    });
+  });
 }

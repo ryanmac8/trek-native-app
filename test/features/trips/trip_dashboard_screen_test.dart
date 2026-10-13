@@ -219,5 +219,187 @@ void main() {
       expect(find.text("Couldn't load places."), findsOneWidget);
       expect(find.text('Retry'), findsOneWidget);
     });
+
+    testWidgets('adding a place offline shows it at once as waiting to sync', (
+      tester,
+    ) async {
+      final localStore = InMemoryPlacesLocalStore();
+      await _pumpDashboard(
+        tester,
+        httpClient: MockClient((request) async {
+          throw http.ClientException('Connection refused');
+        }),
+        localStore: localStore,
+      );
+      await tester.tap(find.text('Places'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Add place'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'Name'),
+        'Fergburger',
+      );
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Fergburger'), findsOneWidget);
+      expect(find.byTooltip('Waiting to sync'), findsOneWidget);
+      expect(await localStore.readPending('trip-1'), hasLength(1));
+    });
+
+    testWidgets('the place form requires a name', (tester) async {
+      await _pumpDashboard(
+        tester,
+        httpClient: MockClient((request) async => _json({'places': []})),
+      );
+      await tester.tap(find.text('Places'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Add place'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Enter a name.'), findsOneWidget);
+      expect(find.text('New place'), findsOneWidget);
+    });
+
+    testWidgets('editing a place syncs only the changed field', (tester) async {
+      final requests = <http.Request>[];
+      final place = {
+        'id': 501,
+        'trip_id': 20,
+        'name': 'Fergburger',
+        'notes': 'Old note',
+        'updated_at': '2026-10-01 10:00:00',
+      };
+      await _pumpDashboard(
+        tester,
+        tripId: '20',
+        httpClient: MockClient((request) async {
+          requests.add(request);
+          if (request.method == 'PUT') {
+            return _json({
+              'place': {
+                ...place,
+                'notes': 'Sweet Bambi',
+                'updated_at': '2026-10-13 09:00:00',
+              },
+            });
+          }
+          return _json({
+            'places': [place],
+          });
+        }),
+      );
+      await tester.tap(find.text('Places'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Fergburger'));
+      await tester.pumpAndSettle();
+      expect(find.text('Edit place'), findsOneWidget);
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'Old note'),
+        'Sweet Bambi',
+      );
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+
+      final put = requests.singleWhere((r) => r.method == 'PUT');
+      expect(put.url.path, '/api/trips/20/places/501');
+      expect(put.headers['X-Base-Updated-At'], '2026-10-01 10:00:00');
+      expect(jsonDecode(put.body), {'notes': 'Sweet Bambi'});
+      expect(find.textContaining('Sweet Bambi'), findsOneWidget);
+      expect(find.byTooltip('Waiting to sync'), findsNothing);
+    });
+
+    testWidgets('deleting a place asks first, then removes it', (tester) async {
+      final requests = <http.Request>[];
+      await _pumpDashboard(
+        tester,
+        tripId: '20',
+        httpClient: MockClient((request) async {
+          requests.add(request);
+          if (request.method == 'DELETE') return _json({'success': true});
+          return _json({
+            'places': [
+              {'id': 501, 'trip_id': 20, 'name': 'Fergburger'},
+            ],
+          });
+        }),
+      );
+      await tester.tap(find.text('Places'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Fergburger'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Delete place'));
+      await tester.pumpAndSettle();
+      expect(find.text('Delete place?'), findsOneWidget);
+      await tester.tap(find.widgetWithText(FilledButton, 'Delete'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Fergburger'), findsNothing);
+      expect(
+        requests.where((r) => r.method == 'DELETE').single.url.path,
+        '/api/trips/20/places/501',
+      );
+    });
+
+    testWidgets('a conflicted place offers keep mine / use theirs', (
+      tester,
+    ) async {
+      final theirs = {
+        'id': 501,
+        'trip_id': 20,
+        'name': 'Fergburger',
+        'notes': 'Their note',
+        'updated_at': '2026-10-05 12:00:00',
+      };
+      await _pumpDashboard(
+        tester,
+        tripId: '20',
+        httpClient: MockClient((request) async {
+          if (request.method == 'PUT') {
+            return _json({'error': 'conflict', 'server': theirs}, 409);
+          }
+          return _json({
+            'places': [
+              {
+                'id': 501,
+                'trip_id': 20,
+                'name': 'Fergburger',
+                'notes': 'Old note',
+                'updated_at': '2026-10-01 10:00:00',
+              },
+            ],
+          });
+        }),
+      );
+      await tester.tap(find.text('Places'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Fergburger'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'Old note'),
+        'My note',
+      );
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+
+      expect(find.byTooltip('Edit conflict — tap to resolve'), findsOneWidget);
+      expect(find.textContaining('My note'), findsOneWidget);
+
+      await tester.tap(find.text('Fergburger'));
+      await tester.pumpAndSettle();
+      expect(find.text('Edit conflict'), findsOneWidget);
+      await tester.tap(find.text('Use theirs'));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('Their note'), findsOneWidget);
+      expect(find.byTooltip('Edit conflict — tap to resolve'), findsNothing);
+    });
   });
 }

@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences_platform_interface/in_memory_shared_preferences_async.dart';
 import 'package:shared_preferences_platform_interface/shared_preferences_async_platform_interface.dart';
+import 'package:trek/places/pending_place_op.dart';
 import 'package:trek/places/place.dart';
 import 'package:trek/places/places_local_store.dart';
 
@@ -64,6 +65,58 @@ void main() {
 
       expect((await store.read('20')).single.id, 1);
       expect((await store.read('21')).single.id, 2);
+    });
+  });
+
+  group('PreferencesPlacesLocalStore pending outbox', () {
+    late PreferencesPlacesLocalStore store;
+
+    setUp(() {
+      SharedPreferencesAsyncPlatform.instance =
+          InMemorySharedPreferencesAsync.empty();
+      store = PreferencesPlacesLocalStore();
+    });
+
+    test('readPending() is empty when nothing is queued', () async {
+      expect(await store.readPending('20'), isEmpty);
+    });
+
+    test('writePending() then readPending() round-trips the outbox', () async {
+      await store.writePending('20', const [
+        PendingPlaceOp(
+          id: 'a',
+          kind: PendingPlaceOpKind.create,
+          placeId: -1,
+          fields: {'name': 'Fergburger'},
+        ),
+        PendingPlaceOp(
+          id: 'b',
+          kind: PendingPlaceOpKind.update,
+          placeId: 501,
+          fields: {'notes': null},
+          baseUpdatedAt: '2026-10-01 10:00:00',
+          conflictServer: {'id': 501, 'trip_id': 20, 'name': 'Theirs'},
+        ),
+      ]);
+
+      final ops = await store.readPending('20');
+
+      expect(ops.map((op) => op.id), ['a', 'b']);
+      expect(ops.first.kind, PendingPlaceOpKind.create);
+      expect(ops.first.fields, {'name': 'Fergburger'});
+      expect(ops.last.fields, {'notes': null});
+      expect(ops.last.baseUpdatedAt, '2026-10-01 10:00:00');
+      expect(ops.last.isConflicted, isTrue);
+      expect(await store.readPending('21'), isEmpty);
+    });
+
+    test('writing an empty outbox clears it', () async {
+      await store.writePending('20', const [
+        PendingPlaceOp(id: 'a', kind: PendingPlaceOpKind.delete, placeId: 5),
+      ]);
+      await store.writePending('20', const []);
+
+      expect(await store.readPending('20'), isEmpty);
     });
   });
 }
