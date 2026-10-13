@@ -56,8 +56,11 @@ class ApiClient {
   Future<dynamic> post(String path, {Object? body}) =>
       _send(HttpMethod.post, path, body: body);
 
-  Future<dynamic> put(String path, {Object? body}) =>
-      _send(HttpMethod.put, path, body: body);
+  Future<dynamic> put(
+    String path, {
+    Object? body,
+    Map<String, String>? headers,
+  }) => _send(HttpMethod.put, path, body: body, headers: headers);
 
   Future<dynamic> patch(String path, {Object? body}) =>
       _send(HttpMethod.patch, path, body: body);
@@ -70,6 +73,7 @@ class ApiClient {
     String path, {
     Object? body,
     Map<String, dynamic>? query,
+    Map<String, String>? headers,
     bool isRetry = false,
   }) async {
     final baseUrl = await _resolveBaseUrl();
@@ -77,10 +81,13 @@ class ApiClient {
       queryParameters: query?.map((key, value) => MapEntry(key, '$value')),
     );
 
-    final headers = <String, String>{'Content-Type': 'application/json'};
+    final requestHeaders = <String, String>{
+      'Content-Type': 'application/json',
+      ...?headers,
+    };
     final token = await _getAccessToken?.call();
     if (token != null) {
-      headers['Authorization'] = 'Bearer $token';
+      requestHeaders['Authorization'] = 'Bearer $token';
     }
 
     final encodedBody = body == null ? null : jsonEncode(body);
@@ -90,7 +97,7 @@ class ApiClient {
       response = await _dispatch(
         method,
         uri,
-        headers,
+        requestHeaders,
         encodedBody,
       ).timeout(_timeout);
     } on TimeoutException {
@@ -104,7 +111,14 @@ class ApiClient {
     if (response.statusCode == 401 && !isRetry && _onUnauthorized != null) {
       final shouldRetry = await _onUnauthorized();
       if (shouldRetry) {
-        return _send(method, path, body: body, query: query, isRetry: true);
+        return _send(
+          method,
+          path,
+          body: body,
+          query: query,
+          headers: headers,
+          isRetry: true,
+        );
       }
     }
 
@@ -154,6 +168,11 @@ class ApiClient {
       case 400:
       case 422:
         throw ValidationException(message, code);
+      case 409:
+        throw ConflictException(
+          message,
+          decodedBody is Map<String, dynamic> ? decodedBody : null,
+        );
       default:
         throw ServerException(statusCode, message);
     }

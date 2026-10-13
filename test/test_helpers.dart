@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:trek/auth/session_token.dart';
 import 'package:trek/auth/token_storage.dart';
 import 'package:trek/config/server_config.dart';
+import 'package:trek/places/pending_place_op.dart';
 import 'package:trek/places/place.dart';
 import 'package:trek/places/places_local_store.dart';
 
@@ -84,4 +85,14 @@ class InMemoryPlacesLocalStore implements PlacesLocalStore {
   @override
   Future<void> write(String tripId, List<Place> places) async =>
       _placesByTripId[tripId] = List.of(places);
+
+  final Map<String, List<PendingPlaceOp>> _pendingByTripId = {};
+
+  @override
+  Future<List<PendingPlaceOp>> readPending(String tripId) async =>
+      List.of(_pendingByTripId[tripId] ?? const []);
+
+  @override
+  Future<void> writePending(String tripId, List<PendingPlaceOp> ops) async =>
+      _pendingByTripId[tripId] = List.of(ops);
 }

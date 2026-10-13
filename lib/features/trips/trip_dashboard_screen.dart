@@ -1,13 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../app/app_messenger.dart';
 import '../../app/providers.dart';
+import '../../design/app_colors.dart';
 import '../../design/app_spacing.dart';
 import '../../design/widgets/app_list_row.dart';
 import '../../design/widgets/empty_state.dart';
 import '../../design/widgets/skeleton_box.dart';
 import '../../network/api_exception.dart';
 import '../../places/place.dart';
+import '../places/place_form_screen.dart';
 
 /// Per-trip shell: a bottom tab bar switching between the day/place/budget/
 /// packing/todo sections the issue #2 nav structure calls for. Places
@@ -81,11 +84,15 @@ class _ComingSoonTab extends StatelessWidget {
 /// shown — this paints from it immediately, then refreshes from the network
 /// in the background. A [NetworkException] only surfaces as an explicit
 /// offline state when there's nothing cached yet; if places are already on
-/// screen, a failed background refresh just leaves them be. This first
-/// slice of issue #5 shows every place in the trip, not yet narrowed to the
-/// "not yet assigned to a day" pool — that filter depends on a day's
-/// assignments exposing place ids, which the Days tab (issue #4) doesn't
-/// model yet.
+/// screen, a failed background refresh just leaves them be.
+///
+/// Create (the add button), edit, and delete (tap a row) apply to the cache
+/// at once and sync in the background; a row with an unsynced change shows
+/// a pending icon, and one whose edit hit a conflict shows a warning that
+/// opens the keep-mine/use-theirs choice. This still shows every place in
+/// the trip, not yet narrowed to the "not yet assigned to a day" pool —
+/// that filter depends on a day's assignments exposing place ids, which the
+/// Days tab (issue #4) doesn't model yet.
 class _PlacesTab extends ConsumerStatefulWidget {
   const _PlacesTab({required this.tripId});
 
@@ -116,9 +123,91 @@ class _PlacesTabState extends ConsumerState<_PlacesTab> {
     await _refresh();
   }
 
+  Future<void> _reloadFromCache() async {
+    final cached = await ref
+        .read(placesRepositoryProvider)
+        .cachedPlaces(widget.tripId);
+    if (!mounted) return;
+    setState(() {
+      _places = cached;
+      _error = null;
+    });
+  }
+
+  /// Pushes queued changes, then shows whatever the cache holds now. Offline
+  /// is silent — the rows' pending icons already say it.
+  Future<void> _sync() async {
+    final result = await ref
+        .read(placesRepositoryProvider)
+        .syncPending(widget.tripId);
+    result.rejections.forEach(AppMessenger.showError);
+    await _reloadFromCache();
+  }
+
+  Future<void> _addPlace() async {
+    final result = await Navigator.of(context).push<PlaceFormResult>(
+      MaterialPageRoute(builder: (_) => const PlaceFormScreen()),
+    );
+    final input = result?.input;
+    if (input == null) return;
+    await ref.read(placesRepositoryProvider).createPlace(widget.tripId, input);
+    await _reloadFromCache();
+    await _sync();
+  }
+
+  Future<void> _openPlace(Place place) async {
+    if (place.syncStatus == PlaceSyncStatus.conflict) {
+      return _resolveConflict(place);
+    }
+    final result = await Navigator.of(context).push<PlaceFormResult>(
+      MaterialPageRoute(builder: (_) => PlaceFormScreen(place: place)),
+    );
+    if (result == null) return;
+    final repository = ref.read(placesRepositoryProvider);
+    final input = result.input;
+    if (result.delete) {
+      await repository.deletePlace(widget.tripId, place.id);
+    } else if (input != null) {
+      await repository.updatePlace(widget.tripId, place, input);
+    }
+    await _reloadFromCache();
+    await _sync();
+  }
+
+  Future<void> _resolveConflict(Place place) async {
+    final keepMine = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Edit conflict'),
+        content: Text(
+          'Someone else changed "${place.name}" while your edit was '
+          'waiting to sync. Keep your version, or use theirs?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Use theirs'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Keep mine'),
+          ),
+        ],
+      ),
+    );
+    if (keepMine == null) return;
+    await ref
+        .read(placesRepositoryProvider)
+        .resolveConflict(widget.tripId, place.id, keepMine: keepMine);
+    await _reloadFromCache();
+    await _sync();
+  }
+
   Future<void> _refresh() async {
     final repository = ref.read(placesRepositoryProvider);
     try {
+      final sync = await repository.syncPending(widget.tripId);
+      sync.rejections.forEach(AppMessenger.showError);
       final refreshed = await repository.refreshPlaces(widget.tripId);
       if (!mounted) return;
       setState(() {
@@ -136,6 +225,17 @@ class _PlacesTabState extends ConsumerState<_PlacesTab> {
 
   @override
   Widget build(BuildContext context) {
+    return Scaffold(
+      body: _buildBody(context),
+      floatingActionButton: FloatingActionButton(
+        tooltip: 'Add place',
+        onPressed: _addPlace,
+        child: const Icon(Icons.add_location_alt_outlined),
+      ),
+    );
+  }
+
+  Widget _buildBody(BuildContext context) {
     final places = _places;
 
     if (places == null) {
@@ -178,9 +278,11 @@ class _PlacesTabState extends ConsumerState<_PlacesTab> {
         itemBuilder: (context, index) {
           final place = places[index];
           return AppListRow(
+            leading: _SyncStatusIcon(status: place.syncStatus),
             title: place.name,
             subtitle: _subtitle(place),
             trailing: _CategoryBadge(category: place.category),
+            onTap: () => _openPlace(place),
           );
         },
       ),
@@ -204,6 +306,30 @@ class _PlacesTabState extends ConsumerState<_PlacesTab> {
         : price.toStringAsFixed(2);
     final currency = place.currency;
     return currency != null ? '$currency $formatted' : formatted;
+  }
+}
+
+/// Leading marker for a place with a change the server hasn't accepted yet
+/// (pending) or one waiting on the user to settle a conflict. Nothing for a
+/// synced place.
+class _SyncStatusIcon extends StatelessWidget {
+  const _SyncStatusIcon({required this.status});
+
+  final PlaceSyncStatus status;
+
+  @override
+  Widget build(BuildContext context) {
+    return switch (status) {
+      PlaceSyncStatus.synced => const SizedBox.shrink(),
+      PlaceSyncStatus.pending => const Tooltip(
+        message: 'Waiting to sync',
+        child: Icon(Icons.cloud_upload_outlined),
+      ),
+      PlaceSyncStatus.conflict => const Tooltip(
+        message: 'Edit conflict — tap to resolve',
+        child: Icon(Icons.warning_amber_rounded, color: AppColors.warning),
+      ),
+    };
   }
 }
 

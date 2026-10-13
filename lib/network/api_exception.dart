@@ -46,6 +46,18 @@ class ValidationException extends ApiException {
   const ValidationException(super.message, [super.code]);
 }
 
+/// The server returned 409 Conflict. Trek uses this for optimistic-
+/// concurrency rejections: an update sent with `X-Base-Updated-At` whose
+/// base version is older than the row's current `updated_at` comes back as
+/// `{ error: 'conflict', server: {...} }`, where `server` is the row's
+/// current version. [body] is the decoded response, when it was a JSON
+/// object.
+class ConflictException extends ApiException {
+  const ConflictException(super.message, [this.body]);
+
+  final Map<String, dynamic>? body;
+}
+
 /// Any other non-2xx response (404, 5xx, etc.).
 class ServerException extends ApiException {
   const ServerException(this.statusCode, super.message);
