@@ -29,13 +29,23 @@ class TripsRepository {
 
   Future<List<Trip>> cachedTrips() => _localStore.read();
 
-  Future<List<Trip>> refreshTrips() async {
+  /// The cache holds archived and non-archived trips side by side
+  /// ([Trip.isArchived]); screens decide which to show. With
+  /// [includeArchived] the archived set is re-fetched too (a second
+  /// `GET /api/trips?archived=1` call). Without it, archived trips already
+  /// in the cache are kept as they were — the default list can't say
+  /// anything about them — unless the default list now returns them, i.e.
+  /// they were unarchived elsewhere.
+  Future<List<Trip>> refreshTrips({bool includeArchived = false}) async {
     final stillPendingDeletes = await _retryPendingDeletes();
     final afterEdits = await _retryPendingEdits(await _localStore.read());
     final (afterRetry, justSyncedIds) = await _retryPendingCreates(afterEdits);
 
     try {
-      final serverTrips = await _tripsApi.listTrips();
+      final serverTrips = [
+        ...await _tripsApi.listTrips(),
+        if (includeArchived) ...await _tripsApi.listTrips(archived: true),
+      ];
       // A delete that hasn't synced yet (still offline) must not have its
       // trip reappear just because the list call above happened to reach
       // the server before the delete retry above did.
@@ -43,24 +53,35 @@ class TripsRepository {
           .where((trip) => !stillPendingDeletes.contains(trip.id))
           .toList();
       final serverIds = visibleServerTrips.map((trip) => trip.id).toSet();
+
+      // Still queued (pending create, edit, or archive toggle) — local
+      // state the server hasn't confirmed yet wins over the server's copy
+      // rather than being silently dropped.
+      bool hasUnsyncedChange(Trip trip) =>
+          trip.isPending || trip.hasPendingEdit || trip.hasPendingArchiveSync;
+      final unsyncedIds = {
+        for (final trip in afterRetry)
+          if (hasUnsyncedChange(trip) && trip.id != null) trip.id,
+      };
+
       final merged = [
-        ...visibleServerTrips,
+        ...visibleServerTrips.where((trip) => !unsyncedIds.contains(trip.id)),
         ...afterRetry.where(
           (trip) =>
-              // Still queued (pending create, edit, or archive toggle) —
-              // keep it rather than silently dropping local state the
-              // server hasn't confirmed yet.
-              trip.isPending ||
-              trip.hasPendingEdit ||
-              trip.hasPendingArchiveSync ||
+              hasUnsyncedChange(trip) ||
               // A create that synced moments ago, in this same call, might
               // not show up in `serverTrips` yet if the list call above
               // raced it — keep it rather than flash the trip out of
-              // existence for one refresh. A trip that's simply absent for
-              // any other reason has legitimately been archived or deleted
-              // server-side (the default list excludes archived trips), so
-              // it's correctly left out of `merged`.
-              (justSyncedIds.contains(trip.id) && !serverIds.contains(trip.id)),
+              // existence for one refresh.
+              (justSyncedIds.contains(trip.id) &&
+                  !serverIds.contains(trip.id)) ||
+              // Archived trips the default list doesn't cover (see above).
+              (!includeArchived &&
+                  trip.isArchived &&
+                  !serverIds.contains(trip.id)),
+          // Anything else that's absent has legitimately been deleted (or,
+          // for a trip cached as non-archived, archived) server-side, so
+          // it's correctly left out of `merged`.
         ),
       ];
       await _localStore.write(merged);

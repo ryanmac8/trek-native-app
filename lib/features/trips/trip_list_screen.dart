@@ -30,6 +30,11 @@ class _TripListScreenState extends ConsumerState<TripListScreen> {
   /// 0 = Upcoming Trips, 1 = Past Trips — always defaults to Upcoming.
   int _tabIndex = 0;
 
+  /// Whether archived trips are listed alongside the rest. Off by default,
+  /// like the server's own `GET /api/trips`; turning it on also fetches
+  /// the archived set ([TripsRepository.refreshTrips] `includeArchived`).
+  bool _showArchived = false;
+
   @override
   void initState() {
     super.initState();
@@ -56,10 +61,20 @@ class _TripListScreenState extends ConsumerState<TripListScreen> {
     setState(() => _trips = cached);
   }
 
+  /// Archived trips already in the cache show up immediately; turning the
+  /// toggle on then fetches the current archived set (keeping the cached
+  /// one if that can't reach the server).
+  Future<void> _toggleShowArchived() async {
+    setState(() => _showArchived = !_showArchived);
+    if (_showArchived) await _refresh();
+  }
+
   Future<void> _refresh() async {
     final repository = ref.read(tripsRepositoryProvider);
     try {
-      final refreshed = await repository.refreshTrips();
+      final refreshed = await repository.refreshTrips(
+        includeArchived: _showArchived,
+      );
       if (!mounted) return;
       setState(() {
         _trips = refreshed;
@@ -80,6 +95,16 @@ class _TripListScreenState extends ConsumerState<TripListScreen> {
       appBar: AppBar(
         title: const Text('Trips'),
         actions: [
+          IconButton(
+            icon: Icon(
+              _showArchived ? Icons.inventory_2 : Icons.inventory_2_outlined,
+            ),
+            tooltip: _showArchived
+                ? 'Hide archived trips'
+                : 'Show archived trips',
+            isSelected: _showArchived,
+            onPressed: _toggleShowArchived,
+          ),
           IconButton(
             icon: const Icon(Icons.settings_outlined),
             tooltip: 'Settings',
@@ -181,6 +206,7 @@ class _TripListScreenState extends ConsumerState<TripListScreen> {
     }
 
     final filtered = trips
+        .where((trip) => _showArchived || !trip.isArchived)
         .where((trip) => _isPast(trip) == (_tabIndex == 1))
         .toList();
     _sortTrips(filtered);
@@ -201,7 +227,7 @@ class _TripListScreenState extends ConsumerState<TripListScreen> {
           final trip = filtered[index];
           return AppListRow(
             title: trip.title,
-            subtitle: trip.isPending ? 'Syncing…' : _dateRangeLabel(trip),
+            subtitle: trip.isPending ? 'Syncing…' : _subtitle(trip),
             // A static icon, not a spinner — this reflects "queued to sync
             // once online", not active in-progress work.
             trailing: trip.isPending
@@ -215,13 +241,24 @@ class _TripListScreenState extends ConsumerState<TripListScreen> {
             // detail screen lands on the navigation stack — go replaces
             // the current location instead, which left no way back to the
             // trip list (no AppBar back button, no swipe-back gesture).
+            // Re-reads the cache on return, since the dashboard may have
+            // archived, unarchived, edited, or deleted the trip.
             onTap: trip.isPending
                 ? null
-                : () => context.push('/trips/${trip.id}'),
+                : () async {
+                    await context.push<void>('/trips/${trip.id}');
+                    await _reloadFromCache();
+                  },
           );
         },
       ),
     );
+  }
+
+  String? _subtitle(Trip trip) {
+    final dates = _dateRangeLabel(trip);
+    if (!trip.isArchived) return dates;
+    return dates == null ? 'Archived' : 'Archived · $dates';
   }
 
   String? _dateRangeLabel(Trip trip) {

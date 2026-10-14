@@ -106,8 +106,8 @@ void main() {
             {
               'id': 20,
               'title': 'New Zealand',
-              'start_date': '2026-11-28',
-              'end_date': '2026-12-13',
+              'start_date': '2029-11-28',
+              'end_date': '2029-12-13',
               'day_count': 16,
               'place_count': 17,
             },
@@ -197,8 +197,8 @@ void main() {
               {
                 'id': 2,
                 'title': 'Near Future',
-                'start_date': '2026-08-01',
-                'end_date': '2026-08-10',
+                'start_date': '2029-08-01',
+                'end_date': '2029-08-10',
               },
               {
                 'id': 3,
@@ -244,8 +244,8 @@ void main() {
             {
               'id': 6,
               'title': 'Booked Trip',
-              'start_date': '2026-08-01',
-              'end_date': '2026-08-10',
+              'start_date': '2029-08-01',
+              'end_date': '2029-08-10',
             },
           ],
         }),
@@ -484,4 +484,186 @@ void main() {
       expect(find.text('Syncing…'), findsOneWidget);
     },
   );
+
+  group('archived trips toggle', () {
+    // Answers the default list with [active] and `?archived=1` with
+    // [archived], recording every query so tests can assert which list was
+    // asked for.
+    MockClient twoListClient({
+      required List<Map<String, Object?>> active,
+      required List<Map<String, Object?>> archived,
+      List<Uri>? requested,
+    }) => MockClient((request) async {
+      requested?.add(request.url);
+      if (request.url.path == '/api/trips') {
+        return _json({
+          'trips': request.url.queryParameters['archived'] == '1'
+              ? archived
+              : active,
+        });
+      }
+      return _json({'days': []});
+    });
+
+    testWidgets('hides archived trips and skips the archived fetch by '
+        'default', (tester) async {
+      final requested = <Uri>[];
+      await _pumpTripList(
+        tester,
+        authService: _authenticatedAuthService(),
+        tripsHttpClient: twoListClient(
+          active: [
+            {'id': 20, 'title': 'New Zealand'},
+          ],
+          archived: [],
+          requested: requested,
+        ),
+        localStore: InMemoryTripsLocalStore(
+          initial: [
+            Trip.fromJson({'id': 7, 'title': 'Iceland', 'is_archived': 1}),
+          ],
+        ),
+      );
+
+      expect(find.text('New Zealand'), findsOneWidget);
+      expect(find.text('Iceland'), findsNothing);
+      expect(requested.map((u) => u.queryParameters['archived']), [null]);
+      expect(find.byTooltip('Show archived trips'), findsOneWidget);
+    });
+
+    testWidgets('turning it on fetches and shows archived trips, labeled', (
+      tester,
+    ) async {
+      final requested = <Uri>[];
+      await _pumpTripList(
+        tester,
+        authService: _authenticatedAuthService(),
+        tripsHttpClient: twoListClient(
+          active: [
+            {'id': 20, 'title': 'New Zealand'},
+          ],
+          archived: [
+            {'id': 7, 'title': 'Iceland', 'is_archived': 1},
+          ],
+          requested: requested,
+        ),
+      );
+      expect(find.text('Iceland'), findsNothing);
+
+      await tester.tap(find.byTooltip('Show archived trips'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Iceland'), findsOneWidget);
+      expect(find.text('Archived'), findsOneWidget);
+      expect(find.text('New Zealand'), findsOneWidget);
+      expect(requested.last.queryParameters['archived'], '1');
+
+      await tester.tap(find.byTooltip('Hide archived trips'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Iceland'), findsNothing);
+    });
+
+    testWidgets('archived trips show their dates after the Archived label', (
+      tester,
+    ) async {
+      await _pumpTripList(
+        tester,
+        authService: _authenticatedAuthService(),
+        tripsHttpClient: twoListClient(
+          active: [],
+          archived: [
+            {
+              'id': 7,
+              'title': 'Iceland',
+              'is_archived': 1,
+              'start_date': '2029-06-01',
+              'end_date': '2029-06-05',
+              'day_count': 5,
+            },
+          ],
+        ),
+      );
+
+      await tester.tap(find.byTooltip('Show archived trips'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Archived · 6/1/2029 – 6/5/2029 · 5 days'), findsOne);
+    });
+
+    testWidgets('offline, turning it on still shows cached archived trips', (
+      tester,
+    ) async {
+      await _pumpTripList(
+        tester,
+        authService: _authenticatedAuthService(),
+        tripsHttpClient: MockClient((request) async {
+          throw http.ClientException('Connection refused');
+        }),
+        localStore: InMemoryTripsLocalStore(
+          initial: [
+            Trip.fromJson({'id': 20, 'title': 'New Zealand'}),
+            Trip.fromJson({'id': 7, 'title': 'Iceland', 'is_archived': 1}),
+          ],
+        ),
+      );
+
+      await tester.tap(find.byTooltip('Show archived trips'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Iceland'), findsOneWidget);
+      expect(find.text('New Zealand'), findsOneWidget);
+      expect(find.textContaining("You're offline"), findsNothing);
+    });
+
+    testWidgets('a trip archived from its dashboard is gone from the list on '
+        'return, and back under the toggle', (tester) async {
+      var archived = false;
+      await _pumpTripList(
+        tester,
+        authService: _authenticatedAuthService(),
+        tripsHttpClient: MockClient((request) async {
+          if (request.method == 'PUT') {
+            archived = true;
+            return _json({
+              'trip': {'id': 20, 'title': 'New Zealand', 'is_archived': 1},
+            });
+          }
+          if (request.url.path == '/api/trips') {
+            return _json({
+              'trips':
+                  (request.url.queryParameters['archived'] == '1') == archived
+                  ? [
+                      {
+                        'id': 20,
+                        'title': 'New Zealand',
+                        'is_archived': archived,
+                      },
+                    ]
+                  : [],
+            });
+          }
+          return _json({'days': []});
+        }),
+      );
+
+      await tester.tap(find.text('New Zealand'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byIcon(Icons.more_vert));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Archive'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Back'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Trips'), findsOneWidget);
+      expect(find.text('New Zealand'), findsNothing);
+
+      await tester.tap(find.byTooltip('Show archived trips'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('New Zealand'), findsOneWidget);
+      expect(find.text('Archived'), findsOneWidget);
+    });
+  });
 }

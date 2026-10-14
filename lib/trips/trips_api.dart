@@ -9,8 +9,16 @@ class TripsApi {
 
   final ApiClient _apiClient;
 
-  Future<List<Trip>> listTrips() async {
-    final response = await _apiClient.get('/api/trips') as Map<String, dynamic>;
+  /// `GET /api/trips`. The server returns either the non-archived trips
+  /// (default) or only the archived ones (`?archived=1`) — never both in one
+  /// response — so a caller that wants every trip makes both calls.
+  Future<List<Trip>> listTrips({bool archived = false}) async {
+    final response =
+        await _apiClient.get(
+              '/api/trips',
+              query: archived ? const {'archived': '1'} : null,
+            )
+            as Map<String, dynamic>;
     final tripsJson = response['trips'] as List<dynamic>? ?? const [];
     return tripsJson
         .map((json) => Trip.fromJson(json as Map<String, dynamic>))
