@@ -287,6 +287,9 @@ class _TripDashboardScreenState extends ConsumerState<TripDashboardScreen> {
                 duration: const Duration(milliseconds: 220),
                 transitionBuilder: (child, animation) => SizeTransition(
                   sizeFactor: animation,
+                  // Deprecated on newer stable Flutter in favor of
+                  // `alignment`, which older SDKs don't have yet.
+                  // ignore: deprecated_member_use
                   axisAlignment: -1,
                   child: child,
                 ),
