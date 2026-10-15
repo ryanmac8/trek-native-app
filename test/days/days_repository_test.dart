@@ -22,6 +22,7 @@ http.Response _json(Object body, [int statusCode = 200]) {
 DaysRepository _repository({
   required http.Client httpClient,
   InMemoryDaysLocalStore? localStore,
+  InMemoryDayNoteOutbox? noteOutbox,
 }) {
   return DaysRepository(
     daysApi: DaysApi(
@@ -31,6 +32,7 @@ DaysRepository _repository({
       ),
     ),
     localStore: localStore ?? InMemoryDaysLocalStore(),
+    noteOutbox: noteOutbox ?? InMemoryDayNoteOutbox(),
   );
 }
 

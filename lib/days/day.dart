@@ -1,8 +1,11 @@
+import 'day_note.dart';
+
 /// A single day of a trip's itinerary, as returned by
 /// `GET /api/trips/:tripId/days` (see [DaysApi]).
 ///
-/// The real response nests each day's place assignments (and notes) inline;
-/// this client only needs how many are assigned to render a count, not the
+/// The real response nests each day's place assignments and day notes
+/// inline. Day notes are modeled in full ([noteItems]); for assignments
+/// this client only needs how many there are to render a count, not the
 /// assignments themselves — a place model doesn't exist yet ([#5]
 /// https://github.com/ryanmac8/trek-native-app/issues/5), so
 /// [assignmentCount] is derived from the array's length rather than the
@@ -16,6 +19,7 @@ class Day {
     this.notes,
     this.title,
     this.assignmentCount = 0,
+    this.noteItems = const [],
   });
 
   final int id;
@@ -26,8 +30,13 @@ class Day {
   final String? title;
   final int assignmentCount;
 
+  /// The day's notes (the response's `notes_items`), in the server's
+  /// display order — see [DayNote.compare].
+  final List<DayNote> noteItems;
+
   factory Day.fromJson(Map<String, dynamic> json) {
     final assignments = json['assignments'] as List<dynamic>? ?? const [];
+    final notes = json['notes_items'] as List<dynamic>? ?? const [];
     return Day(
       id: json['id'] as int,
       tripId: json['trip_id'] as int,
@@ -36,6 +45,11 @@ class Day {
       notes: json['notes'] as String?,
       title: json['title'] as String?,
       assignmentCount: assignments.length,
+      noteItems:
+          notes
+              .map((note) => DayNote.fromJson(note as Map<String, dynamic>))
+              .toList()
+            ..sort(DayNote.compare),
     );
   }
 
@@ -50,6 +64,7 @@ class Day {
     'notes': notes,
     'title': title,
     'assignment_count': assignmentCount,
+    'notes_items': noteItems.map((note) => note.toCacheJson()).toList(),
   };
 
   factory Day.fromCacheJson(Map<String, dynamic> json) {
@@ -61,6 +76,24 @@ class Day {
       notes: json['notes'] as String?,
       title: json['title'] as String?,
       assignmentCount: json['assignment_count'] as int? ?? 0,
+      noteItems: (json['notes_items'] as List<dynamic>? ?? const [])
+          .map((note) => DayNote.fromCacheJson(note as Map<String, dynamic>))
+          .toList(),
+    );
+  }
+
+  Day withNoteItems(List<DayNote> noteItems) {
+    return Day(
+      id: id,
+      tripId: tripId,
+      dayNumber: dayNumber,
+      date: date,
+      notes: notes,
+      title: title,
+      assignmentCount: assignmentCount,
+      noteItems: List<DayNote>.unmodifiable(
+        List<DayNote>.of(noteItems)..sort(DayNote.compare),
+      ),
     );
   }
 

@@ -39,6 +39,7 @@ Future<void> _pumpDashboard(
         daysLocalStoreProvider.overrideWithValue(
           localStore ?? InMemoryDaysLocalStore(),
         ),
+        dayNoteOutboxProvider.overrideWithValue(InMemoryDayNoteOutbox()),
       ],
       child: MaterialApp(home: TripDashboardScreen(tripId: tripId)),
     ),
