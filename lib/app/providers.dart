@@ -8,6 +8,7 @@ import '../config/server_config.dart';
 import '../config/server_config_resolver.dart';
 import '../config/server_health_check.dart';
 import '../config/wifi_network_info.dart';
+import '../days/day_note_outbox.dart';
 import '../days/days_api.dart';
 import '../days/days_local_store.dart';
 import '../days/days_repository.dart';
@@ -109,10 +110,19 @@ final daysLocalStoreProvider = Provider<DaysLocalStore>(
   (ref) => PreferencesDaysLocalStore(),
 );
 
+/// Durable per-trip queue of day-note writes that haven't reached the
+/// server yet — see docs/days.md.
+final dayNoteOutboxProvider = Provider<DayNoteOutbox>(
+  (ref) => PreferencesDayNoteOutbox(),
+);
+
+/// Shared by every screen (not auto-disposed), so its one-at-a-time sync
+/// lock covers all of them writing to the same trip.
 final daysRepositoryProvider = Provider<DaysRepository>((ref) {
   return DaysRepository(
     daysApi: ref.watch(daysApiProvider),
     localStore: ref.watch(daysLocalStoreProvider),
+    noteOutbox: ref.watch(dayNoteOutboxProvider),
   );
 });
 

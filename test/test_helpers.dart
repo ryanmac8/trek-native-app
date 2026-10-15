@@ -5,6 +5,7 @@ import 'package:trek/auth/session_token.dart';
 import 'package:trek/auth/token_storage.dart';
 import 'package:trek/config/server_config.dart';
 import 'package:trek/days/day.dart';
+import 'package:trek/days/day_note_outbox.dart';
 import 'package:trek/days/days_local_store.dart';
 import 'package:trek/trips/trip.dart';
 import 'package:trek/trips/trips_local_store.dart';
@@ -122,4 +123,23 @@ class InMemoryDaysLocalStore implements DaysLocalStore {
   @override
   Future<void> write(String tripId, List<Day> days) async =>
       _daysByTripId[tripId] = List.of(days);
+}
+
+/// In-memory [DayNoteOutbox] fake — avoids the `shared_preferences`
+/// platform channel. Keyed per trip id, like the real outbox.
+class InMemoryDayNoteOutbox implements DayNoteOutbox {
+  InMemoryDayNoteOutbox({Map<String, List<DayNoteOp>> initial = const {}})
+    : _opsByTripId = {
+        for (final entry in initial.entries) entry.key: List.of(entry.value),
+      };
+
+  final Map<String, List<DayNoteOp>> _opsByTripId;
+
+  @override
+  Future<List<DayNoteOp>> read(String tripId) async =>
+      List.of(_opsByTripId[tripId] ?? const []);
+
+  @override
+  Future<void> write(String tripId, List<DayNoteOp> ops) async =>
+      _opsByTripId[tripId] = List.of(ops);
 }

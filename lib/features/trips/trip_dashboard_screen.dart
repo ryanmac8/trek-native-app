@@ -9,6 +9,7 @@ import '../../design/widgets/app_list_row.dart';
 import '../../design/widgets/empty_state.dart';
 import '../../design/widgets/skeleton_box.dart';
 import '../../network/api_exception.dart';
+import 'day_detail_screen.dart';
 
 /// Per-trip shell: a bottom tab bar switching between the day/place/budget/
 /// packing/todo sections the issue #2 nav structure calls for. Days (this
@@ -182,15 +183,37 @@ class _DaysTabState extends ConsumerState<_DaysTab> {
                 : 'Day ${day.dayNumber}',
             subtitle: _subtitle(day),
             trailing: Text(
-              day.assignmentCount == 1
-                  ? '1 place'
-                  : '${day.assignmentCount} places',
+              _counts(day),
               style: Theme.of(context).textTheme.bodySmall,
             ),
+            onTap: () => _openDay(day),
           );
         },
       ),
     );
+  }
+
+  Future<void> _openDay(Day day) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (context) => DayDetailScreen(tripId: widget.tripId, day: day),
+      ),
+    );
+    // Notes may have changed on the day screen — repaint from the cache.
+    final cached = await ref
+        .read(daysRepositoryProvider)
+        .cachedDays(widget.tripId);
+    if (!mounted || cached.isEmpty) return;
+    setState(() => _days = cached);
+  }
+
+  String _counts(Day day) {
+    final places = day.assignmentCount == 1
+        ? '1 place'
+        : '${day.assignmentCount} places';
+    final noteCount = day.noteItems.length;
+    if (noteCount == 0) return places;
+    return '$places · ${noteCount == 1 ? '1 note' : '$noteCount notes'}';
   }
 
   String? _subtitle(Day day) {
