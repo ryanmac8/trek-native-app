@@ -7,6 +7,9 @@ import '../config/server_config.dart';
 import '../config/server_config_resolver.dart';
 import '../config/wifi_network_info.dart';
 import '../network/api_client.dart';
+import '../places/categories_api.dart';
+import '../places/categories_local_store.dart';
+import '../places/categories_repository.dart';
 import '../places/places_api.dart';
 import '../places/places_local_store.dart';
 import '../places/places_repository.dart';
@@ -81,6 +84,23 @@ final placesRepositoryProvider = Provider<PlacesRepository>((ref) {
   return PlacesRepository(
     placesApi: ref.watch(placesApiProvider),
     localStore: ref.watch(placesLocalStoreProvider),
+  );
+});
+
+final categoriesApiProvider = Provider<CategoriesApi>((ref) {
+  return CategoriesApi(apiClient: ref.watch(apiClientProvider));
+});
+
+/// Local (non-secure) cache of the server's place categories, so the place
+/// form's category picker works offline — see docs/offline-first.md.
+final categoriesLocalStoreProvider = Provider<CategoriesLocalStore>(
+  (ref) => PreferencesCategoriesLocalStore(),
+);
+
+final categoriesRepositoryProvider = Provider<CategoriesRepository>((ref) {
+  return CategoriesRepository(
+    categoriesApi: ref.watch(categoriesApiProvider),
+    localStore: ref.watch(categoriesLocalStoreProvider),
   );
 });
 

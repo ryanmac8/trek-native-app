@@ -10,6 +10,7 @@ import '../../design/widgets/empty_state.dart';
 import '../../design/widgets/skeleton_box.dart';
 import '../../network/api_exception.dart';
 import '../../places/place.dart';
+import '../places/category_avatar.dart';
 import '../places/place_form_screen.dart';
 
 /// Per-trip shell: a bottom tab bar switching between the day/place/budget/
@@ -105,11 +106,37 @@ class _PlacesTab extends ConsumerStatefulWidget {
 class _PlacesTabState extends ConsumerState<_PlacesTab> {
   List<Place>? _places;
   Object? _error;
+  List<PlaceCategoryRef> _categories = const [];
 
   @override
   void initState() {
     super.initState();
     _load();
+    _loadCategories();
+  }
+
+  /// Cached categories first, then a background refresh. Failures keep
+  /// whatever is cached — the picker just offers fewer choices.
+  Future<void> _loadCategories() async {
+    final repository = ref.read(categoriesRepositoryProvider);
+    try {
+      final cached = await repository.cachedCategories();
+      if (mounted && cached.isNotEmpty) setState(() => _categories = cached);
+      final refreshed = await repository.refreshCategories();
+      if (mounted) setState(() => _categories = refreshed);
+    } catch (_) {
+      // Offline with nothing cached, or the server refused: keep the cache.
+    }
+  }
+
+  /// [category] with its name/color/icon filled in from the category list
+  /// when it's a bare id — a category picked locally and not yet synced.
+  PlaceCategoryRef? _resolveCategory(PlaceCategoryRef? category) {
+    if (category == null || category.name != null) return category;
+    for (final known in _categories) {
+      if (known.id == category.id) return known;
+    }
+    return category;
   }
 
   Future<void> _load() async {
@@ -146,7 +173,9 @@ class _PlacesTabState extends ConsumerState<_PlacesTab> {
 
   Future<void> _addPlace() async {
     final result = await Navigator.of(context).push<PlaceFormResult>(
-      MaterialPageRoute(builder: (_) => const PlaceFormScreen()),
+      MaterialPageRoute(
+        builder: (_) => PlaceFormScreen(categories: _categories),
+      ),
     );
     final input = result?.input;
     if (input == null) return;
@@ -160,7 +189,9 @@ class _PlacesTabState extends ConsumerState<_PlacesTab> {
       return _resolveConflict(place);
     }
     final result = await Navigator.of(context).push<PlaceFormResult>(
-      MaterialPageRoute(builder: (_) => PlaceFormScreen(place: place)),
+      MaterialPageRoute(
+        builder: (_) => PlaceFormScreen(place: place, categories: _categories),
+      ),
     );
     if (result == null) return;
     final repository = ref.read(placesRepositoryProvider);
@@ -281,7 +312,9 @@ class _PlacesTabState extends ConsumerState<_PlacesTab> {
             leading: _SyncStatusIcon(status: place.syncStatus),
             title: place.name,
             subtitle: _subtitle(place),
-            trailing: _CategoryBadge(category: place.category),
+            trailing: _CategoryBadge(
+              category: _resolveCategory(place.category),
+            ),
             onTap: () => _openPlace(place),
           );
         },
@@ -336,7 +369,7 @@ class _SyncStatusIcon extends StatelessWidget {
 /// A small colored chip for a place's category, using the real color/icon
 /// Trek's backend returns per-category (see [PlaceCategoryRef]) rather than
 /// the design system's fixed default-category tokens, since a place's
-/// actual category may be one of the user's own custom categories.
+/// actual category may be one of the server's custom categories.
 class _CategoryBadge extends StatelessWidget {
   const _CategoryBadge({required this.category});
 
@@ -346,26 +379,9 @@ class _CategoryBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     final category = this.category;
     if (category == null) return const SizedBox.shrink();
-    final color =
-        _parseColor(category.color) ?? Theme.of(context).colorScheme.primary;
     return Chip(
-      avatar: category.icon != null
-          ? CircleAvatar(
-              backgroundColor: color,
-              child: Text(category.icon!, style: const TextStyle(fontSize: 12)),
-            )
-          : CircleAvatar(backgroundColor: color, radius: 6),
+      avatar: CategoryAvatar(category: category),
       label: Text(category.name ?? 'Category'),
     );
-  }
-
-  /// Parses a `#rrggbb` hex string (Trek's category color format — see
-  /// `server/src/db/seeds.ts`) into a [Color]; `null` if it doesn't match.
-  Color? _parseColor(String? hex) {
-    if (hex == null) return null;
-    final normalized = hex.replaceFirst('#', '');
-    if (normalized.length != 6) return null;
-    final value = int.tryParse(normalized, radix: 16);
-    return value == null ? null : Color(0xFF000000 | value);
   }
 }

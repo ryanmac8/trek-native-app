@@ -24,6 +24,7 @@ Future<void> _pumpDashboard(
   WidgetTester tester, {
   required http.Client httpClient,
   InMemoryPlacesLocalStore? localStore,
+  InMemoryCategoriesLocalStore? categoriesStore,
   String tripId = 'trip-1',
 }) async {
   await tester.pumpWidget(
@@ -37,6 +38,9 @@ Future<void> _pumpDashboard(
         ),
         placesLocalStoreProvider.overrideWithValue(
           localStore ?? InMemoryPlacesLocalStore(),
+        ),
+        categoriesLocalStoreProvider.overrideWithValue(
+          categoriesStore ?? InMemoryCategoriesLocalStore(),
         ),
       ],
       child: MaterialApp(home: TripDashboardScreen(tripId: tripId)),
@@ -96,6 +100,9 @@ void main() {
         tester,
         tripId: '20',
         httpClient: MockClient((request) async {
+          if (request.url.path == '/api/categories') {
+            return _json({'categories': []});
+          }
           expect(request.url.path, '/api/trips/20/places');
           return _json({
             'places': [
@@ -185,7 +192,7 @@ void main() {
         await _pumpDashboard(
           tester,
           httpClient: MockClient((request) async {
-            attempts++;
+            if (request.url.path.endsWith('/places')) attempts++;
             throw http.ClientException('Connection refused');
           }),
         );
@@ -400,6 +407,191 @@ void main() {
 
       expect(find.textContaining('Their note'), findsOneWidget);
       expect(find.byTooltip('Edit conflict — tap to resolve'), findsNothing);
+    });
+
+    group('category picker', () {
+      const restaurant = {
+        'id': 2,
+        'name': 'Restaurant',
+        'color': '#ef4444',
+        'icon': '🍽️',
+      };
+      const attraction = {
+        'id': 3,
+        'name': 'Attraction',
+        'color': '#8b5cf6',
+        'icon': '🏛️',
+      };
+
+      Future<void> pickCategory(WidgetTester tester, String from, String to) {
+        return () async {
+          await tester.tap(find.text(from));
+          await tester.pumpAndSettle();
+          await tester.tap(find.text(to).last);
+          await tester.pumpAndSettle();
+        }();
+      }
+
+      testWidgets('offers the server categories and syncs category_id', (
+        tester,
+      ) async {
+        final requests = <http.Request>[];
+        final place = {
+          'id': 501,
+          'trip_id': 20,
+          'name': 'Fergburger',
+          'category': restaurant,
+          'updated_at': '2026-10-01 10:00:00',
+        };
+        await _pumpDashboard(
+          tester,
+          tripId: '20',
+          httpClient: MockClient((request) async {
+            requests.add(request);
+            if (request.url.path == '/api/categories') {
+              return _json({
+                'categories': [
+                  {...attraction, 'user_id': null},
+                  {...restaurant, 'user_id': null},
+                ],
+              });
+            }
+            if (request.method == 'PUT') {
+              return _json({
+                'place': {
+                  ...place,
+                  'category': attraction,
+                  'updated_at': '2026-10-16 09:00:00',
+                },
+              });
+            }
+            return _json({
+              'places': [place],
+            });
+          }),
+        );
+        await tester.tap(find.text('Places'));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('Fergburger'));
+        await tester.pumpAndSettle();
+        await pickCategory(tester, 'Restaurant', 'Attraction');
+        await tester.tap(find.text('Save'));
+        await tester.pumpAndSettle();
+
+        final put = requests.singleWhere((r) => r.method == 'PUT');
+        expect(jsonDecode(put.body), {'category_id': 3});
+        expect(find.text('Attraction'), findsOneWidget);
+        expect(find.text('Restaurant'), findsNothing);
+      });
+
+      testWidgets(
+        'offline, picks from cached categories and shows the choice at once',
+        (tester) async {
+          final localStore = InMemoryPlacesLocalStore(
+            initial: {
+              'trip-1': [
+                Place.fromJson({'id': 501, 'trip_id': 1, 'name': 'Fergburger'}),
+              ],
+            },
+          );
+          await _pumpDashboard(
+            tester,
+            httpClient: MockClient((request) async {
+              throw http.ClientException('Connection refused');
+            }),
+            localStore: localStore,
+            categoriesStore: InMemoryCategoriesLocalStore(
+              initial: [
+                PlaceCategoryRef.fromJson(restaurant),
+                PlaceCategoryRef.fromJson(attraction),
+              ],
+            ),
+          );
+          await tester.tap(find.text('Places'));
+          await tester.pumpAndSettle();
+
+          await tester.tap(find.text('Fergburger'));
+          await tester.pumpAndSettle();
+          await pickCategory(tester, 'No category', 'Restaurant');
+          await tester.tap(find.text('Save'));
+          await tester.pumpAndSettle();
+
+          expect(find.text('Restaurant'), findsOneWidget);
+          expect(find.byTooltip('Waiting to sync'), findsOneWidget);
+          final pending = await localStore.readPending('trip-1');
+          expect(pending.single.fields, {'category_id': 2});
+        },
+      );
+
+      testWidgets('creating a place can set a category', (tester) async {
+        final localStore = InMemoryPlacesLocalStore();
+        await _pumpDashboard(
+          tester,
+          httpClient: MockClient((request) async {
+            throw http.ClientException('Connection refused');
+          }),
+          localStore: localStore,
+          categoriesStore: InMemoryCategoriesLocalStore(
+            initial: [PlaceCategoryRef.fromJson(attraction)],
+          ),
+        );
+        await tester.tap(find.text('Places'));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byTooltip('Add place'));
+        await tester.pumpAndSettle();
+        await tester.enterText(
+          find.widgetWithText(TextFormField, 'Name'),
+          'Skyline Gondola',
+        );
+        await pickCategory(tester, 'No category', 'Attraction');
+        await tester.tap(find.text('Save'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Attraction'), findsOneWidget);
+        final pending = await localStore.readPending('trip-1');
+        expect(pending.single.fields, {
+          'name': 'Skyline Gondola',
+          'category_id': 3,
+        });
+      });
+
+      testWidgets(
+        'with no categories available, the picker explains and keeps the '
+        "place's current one",
+        (tester) async {
+          await _pumpDashboard(
+            tester,
+            httpClient: MockClient((request) async {
+              throw http.ClientException('Connection refused');
+            }),
+            localStore: InMemoryPlacesLocalStore(
+              initial: {
+                'trip-1': [
+                  Place.fromJson({
+                    'id': 501,
+                    'trip_id': 1,
+                    'name': 'Fergburger',
+                    'category': restaurant,
+                  }),
+                ],
+              },
+            ),
+          );
+          await tester.tap(find.text('Places'));
+          await tester.pumpAndSettle();
+
+          await tester.tap(find.text('Fergburger'));
+          await tester.pumpAndSettle();
+
+          expect(
+            find.text("Categories appear once they've loaded while online."),
+            findsOneWidget,
+          );
+          expect(find.text('Restaurant'), findsOneWidget);
+        },
+      );
     });
   });
 }
