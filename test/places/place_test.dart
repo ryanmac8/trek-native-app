@@ -202,4 +202,69 @@ void main() {
       expect(PlaceInput.fromPlace(original).changesFrom(original), isEmpty);
     });
   });
+
+  group('category', () {
+    const restaurant = PlaceCategoryRef(
+      id: 2,
+      name: 'Restaurant',
+      color: '#ef4444',
+      icon: '🍽️',
+    );
+    const place = Place(
+      id: 501,
+      tripId: 20,
+      name: 'Fergburger',
+      category: restaurant,
+    );
+
+    test('toCreateJson includes category_id only when one is chosen', () {
+      expect(
+        const PlaceInput(name: 'Fergburger', categoryId: 2).toCreateJson(),
+        {'name': 'Fergburger', 'category_id': 2},
+      );
+      expect(
+        const PlaceInput(name: 'Fergburger').toCreateJson(),
+        isNot(contains('category_id')),
+      );
+    });
+
+    test('changesFrom sends a new category_id, and null to clear it', () {
+      expect(
+        const PlaceInput(name: 'Fergburger', categoryId: 7).changesFrom(place),
+        {'category_id': 7},
+      );
+      expect(const PlaceInput(name: 'Fergburger').changesFrom(place), {
+        'category_id': null,
+      });
+      expect(
+        const PlaceInput(name: 'Fergburger', categoryId: 2).changesFrom(place),
+        isEmpty,
+      );
+    });
+
+    test('fromPlace carries the current category id', () {
+      expect(PlaceInput.fromPlace(place).categoryId, 2);
+    });
+
+    test('applyFields keeps the full category when the id is unchanged', () {
+      final updated = place.applyFields({'category_id': 2, 'notes': 'x'});
+      expect(updated.category?.name, 'Restaurant');
+    });
+
+    test('applyFields swaps to a bare id ref, or clears on null', () {
+      final changed = place.applyFields({'category_id': 7});
+      expect(changed.category?.id, 7);
+      expect(changed.category?.name, isNull);
+
+      expect(place.applyFields({'category_id': null}).category, isNull);
+      expect(place.applyFields({'notes': 'x'}).category?.id, 2);
+    });
+
+    test('emoji is the icon only when it is not a Lucide icon name', () {
+      expect(restaurant.emoji, '🍽️');
+      expect(const PlaceCategoryRef(id: 11, icon: 'MapPin').emoji, isNull);
+      expect(const PlaceCategoryRef(id: 12, icon: 'map-pin').emoji, isNull);
+      expect(const PlaceCategoryRef(id: 13).emoji, isNull);
+    });
+  });
 }

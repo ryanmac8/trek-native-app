@@ -1,18 +1,22 @@
 # Places
 
-Covers the place pool from [issue #5](https://github.com/ryanmac8/trek-native-app/issues/5): the Places tab of the trip dashboard, backed by a trip-scoped local cache and an outbox of local changes. Places can be listed, created, edited, and deleted. The category picker, tags, coordinates, bulk actions, search/filter, the place detail view, and importers are not built yet.
+Covers the place pool from [issue #5](https://github.com/ryanmac8/trek-native-app/issues/5): the Places tab of the trip dashboard, backed by a trip-scoped local cache and an outbox of local changes. Places can be listed, created, edited, and deleted, and given a category from the server's category list. Custom-category management, tags, coordinates, bulk actions, search/filter, the place detail view, and importers are not built yet.
 
 ## Pieces
 
 | File | Purpose |
 | --- | --- |
-| [lib/places/place.dart](../lib/places/place.dart) | `Place` — the place model: name, description, address, category, price/currency, notes, Trek's `updated_at`, and a local-only `PlaceSyncStatus` (`synced`/`pending`/`conflict`). A negative `id` is a temporary id for a place whose create hasn't synced. `applyFields` lays a request body over a place. `PlaceCategoryRef` — the category embedded on a place (id/name/color/icon), distinct from the design system's `PlaceCategory` enum ([place_category_colors.dart](../lib/design/place_category_colors.dart)), which models fixed default-category tokens. `PlaceInput` — the form's fields, turned into a `POST` body (`toCreateJson`: non-empty fields only) or a `PUT` body (`changesFrom`: only fields that differ, cleared ones as `null`). |
+| [lib/places/place.dart](../lib/places/place.dart) | `Place` — the place model: name, description, address, category, price/currency, notes, Trek's `updated_at`, and a local-only `PlaceSyncStatus` (`synced`/`pending`/`conflict`). A negative `id` is a temporary id for a place whose create hasn't synced. `applyFields` lays a request body over a place. `PlaceCategoryRef` — the category embedded on a place (id/name/color/icon; `emoji` is the icon only when it isn't a Lucide icon name), also used for the rows of the category list, distinct from the design system's `PlaceCategory` enum ([place_category_colors.dart](../lib/design/place_category_colors.dart)), which models fixed default-category tokens. `PlaceInput` — the form's fields (including `categoryId`), turned into a `POST` body (`toCreateJson`: non-empty fields only) or a `PUT` body (`changesFrom`: only fields that differ, cleared ones as `null`). |
 | [lib/places/pending_place_op.dart](../lib/places/pending_place_op.dart) | `PendingPlaceOp` — one queued create/update/delete: target place id, request body, the `updated_at` it was based on, and (after a 409) the server's current version. |
 | [lib/places/places_api.dart](../lib/places/places_api.dart) | `PlacesApi` — `listPlaces`, `createPlace`, `updatePlace` (optionally with `X-Base-Updated-At`), `deletePlace`. |
 | [lib/places/places_local_store.dart](../lib/places/places_local_store.dart) | `PlacesLocalStore`/`PreferencesPlacesLocalStore` — per trip, the cached place list (`trek.places.cache.<tripId>`) and the outbox (`trek.places.pending.<tripId>`), as JSON in `shared_preferences`. |
+| [lib/places/categories_api.dart](../lib/places/categories_api.dart) | `CategoriesApi` — `listCategories` (`GET /api/categories`). |
+| [lib/places/categories_local_store.dart](../lib/places/categories_local_store.dart) | `CategoriesLocalStore`/`PreferencesCategoriesLocalStore` — the cached category list (`trek.categories.cache`), as JSON in `shared_preferences`. One entry, since categories are server-wide. |
+| [lib/places/categories_repository.dart](../lib/places/categories_repository.dart) | `CategoriesRepository` — `cachedCategories` (cache only) and `refreshCategories` (fetch and replace the cache; on `NetworkException` the cache, unless it's empty). |
 | [lib/places/places_repository.dart](../lib/places/places_repository.dart) | `PlacesRepository` — the offline-first front door the Places tab uses instead of `PlacesApi` directly. See below. |
-| [lib/features/places/place_form_screen.dart](../lib/features/places/place_form_screen.dart) | `PlaceFormScreen` — create/edit form (name, description, address, price, 3-letter currency, notes) with a delete action when editing. Pops a `PlaceFormResult`; persisting is the caller's job. |
-| [lib/features/trips/trip_dashboard_screen.dart](../lib/features/trips/trip_dashboard_screen.dart) | `_PlacesTab` — the Places section of the trip dashboard. Paints from the cache, refreshes in the background, adds places via its floating button, and opens the form on a row tap (or the conflict dialog for a conflicted row). Rows show a pending icon or a conflict warning when not synced, and a `_CategoryBadge` colored from the place's real category. |
+| [lib/features/places/place_form_screen.dart](../lib/features/places/place_form_screen.dart) | `PlaceFormScreen` — create/edit form (name, description, address, category, price, 3-letter currency, notes) with a delete action when editing. Pops a `PlaceFormResult`; persisting is the caller's job. |
+| [lib/features/places/category_avatar.dart](../lib/features/places/category_avatar.dart) | `CategoryAvatar` — a circle in the category's color with its emoji, used by the row badge and the picker; `parseCategoryColor` for `#rrggbb` strings. |
+| [lib/features/trips/trip_dashboard_screen.dart](../lib/features/trips/trip_dashboard_screen.dart) | `_PlacesTab` — the Places section of the trip dashboard. Paints from the cache, refreshes in the background, adds places via its floating button, and opens the form on a row tap (or the conflict dialog for a conflicted row). Rows show a pending icon or a conflict warning when not synced, and a `_CategoryBadge` colored from the place's real category. Loads the category list (cache first, then a background refresh) and hands it to the form. |
 
 ## API contract
 
@@ -29,7 +33,12 @@ All under `/api/trips/:tripId/places` (Trek's `PlacesController`), bearer-authen
 - `PUT` is a partial update: a key absent from the body keeps its value; an explicit `null` clears `description`, `address`, `price`, and `notes`. `name` and `currency` can't be cleared — the server keeps the old value for an empty or `null` one.
 - `X-Base-Updated-At` is optimistic concurrency: when present and different from the row's current `updated_at`, the server refuses the write with 409 and returns the current row under `server`. Without the header the update is unconditional.
 - String limits (400 `{ error }` when exceeded): name 200, description 2000, address 500, notes 2000. No edit permission (`place_edit`) is 403 `{ error: 'No permission' }`; an unknown trip or place is 404.
+- `category_id` sets the category. On `PUT`, an explicit `null` clears it; on `POST`, it's omitted for no category.
 - Category colors are hex strings (e.g. `#3b82f6`), matching the default categories' seed colors in Trek's backend (`server/src/db/seeds.ts`).
+
+### Categories
+
+`GET /api/categories` (`CategoriesController`) answers `{ categories: [...] }`, sorted by name. Each row is `{ id, name, color, icon, user_id, created_at }`. Categories are server-wide, not per user or per trip: any authenticated user can list them, while `POST`/`PUT`/`DELETE /api/categories` are admin-only. A fresh server is seeded with ten defaults (Hotel, Restaurant, Attraction, Shopping, Transport, Activity, Bar/Cafe, Beach, Nature, Other) whose icons are emoji; categories created in Trek's web client store a Lucide icon name (e.g. `MapPin`) as `icon` instead, with `#6366f1` as the default color.
 
 ## Offline-first reads and writes (`PlacesRepository`)
 
@@ -63,11 +72,14 @@ Concurrency inside the repository:
 - An op whose request is in flight isn't merged into. An edit made meanwhile queues behind it, and its base version is advanced to the `updated_at` the in-flight request returns, so it doesn't conflict with the app's own write.
 - Overlapping `syncPending` calls share one pass, and a call during a pass makes it run once more.
 
+**Categories** — the request body for a category change carries only `category_id`, so a place whose category was changed locally holds a bare id reference (no name/color) until the server's response replaces it. The Places tab fills in the name and color from the cached category list. The picker always offers the place's current category, even when the list hasn't loaded, and shows a hint when no categories are cached. The category list itself is read-only and isn't queued.
+
 **Conflicts** — `resolveConflict(tripId, placeId, keepMine:)`. Keep mine re-queues the local edit with the server's `updated_at` as its new base, so it overwrites the server's version on the next pass. Use theirs discards the local edit and shows the server's version. The Places tab offers both in a dialog when a conflicted row is tapped.
 
 ## What's still open
 
-- The category picker and custom-category CRUD (`GET`/`POST`/`PUT`/`DELETE /api/categories`), and tags on places.
+- Custom-category create/edit/delete (`POST`/`PUT`/`DELETE /api/categories`, admin-only), and tags on places.
+- Scoping the category cache to the server/account it came from; it's a single entry that the next successful refresh replaces.
 - Coordinates/map, website/phone/hours/duration/transport mode, and the place detail view (photo, Google Place link).
 - Bulk update/delete (`POST .../bulk-update`, `.../bulk-delete`), search/filter, ratings, image upload, and the GPX/map/Google/Naver importers.
 - The "place pool" filter — the tab shows every place in the trip, not just places not yet assigned to a day, since a day's assignments don't expose place ids client-side yet (depends on [#4](https://github.com/ryanmac8/trek-native-app/issues/4)).

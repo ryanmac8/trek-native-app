@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../design/app_spacing.dart';
 import '../../places/place.dart';
+import 'category_avatar.dart';
 
 /// What the user chose on a [PlaceFormScreen]: save [input], or delete the
 /// place being edited. `null` from the route means they backed out.
@@ -14,17 +15,21 @@ class PlaceFormResult {
 }
 
 /// Create/edit form for a place's own fields: name, description, address,
-/// price + currency, and notes. Purely a form — it pops a [PlaceFormResult]
+/// category, price + currency, and notes. Purely a form — it pops a [PlaceFormResult]
 /// and leaves persisting it to the caller (`PlacesRepository`), so it works
 /// the same offline.
 ///
 /// Field limits mirror Trek's `PlacesController`: name 200, description
 /// 2000, address 500, notes 2000 characters.
 class PlaceFormScreen extends StatefulWidget {
-  const PlaceFormScreen({super.key, this.place});
+  const PlaceFormScreen({super.key, this.place, this.categories = const []});
 
   /// The place being edited; `null` to create a new one.
   final Place? place;
+
+  /// The server's categories (see `CategoriesRepository`), offered by the
+  /// category picker. May be empty when none have been fetched yet.
+  final List<PlaceCategoryRef> categories;
 
   @override
   State<PlaceFormScreen> createState() => _PlaceFormScreenState();
@@ -42,6 +47,7 @@ class _PlaceFormScreenState extends State<PlaceFormScreen> {
   );
   late final _currency = TextEditingController(text: widget.place?.currency);
   late final _notes = TextEditingController(text: widget.place?.notes);
+  late int? _categoryId = widget.place?.category?.id;
 
   bool get _isEditing => widget.place != null;
 
@@ -79,6 +85,7 @@ class _PlaceFormScreenState extends State<PlaceFormScreen> {
           name: _name.text,
           description: _description.text,
           address: _address.text,
+          categoryId: _categoryId,
           price: priceText.isEmpty ? null : _parsePrice(priceText),
           currency: _currency.text,
           notes: _notes.text,
@@ -156,6 +163,8 @@ class _PlaceFormScreenState extends State<PlaceFormScreen> {
               maxLength: 500,
               textInputAction: TextInputAction.next,
             ),
+            _buildCategoryPicker(),
+            const SizedBox(height: AppSpacing.md),
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -205,6 +214,52 @@ class _PlaceFormScreenState extends State<PlaceFormScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  /// The server's categories, plus the place's current one if the list
+  /// doesn't include it (e.g. nothing cached yet), so editing other fields
+  /// never drops it.
+  List<PlaceCategoryRef> get _categoryOptions {
+    final current = widget.place?.category;
+    if (current == null ||
+        widget.categories.any((category) => category.id == current.id)) {
+      return widget.categories;
+    }
+    return [...widget.categories, current];
+  }
+
+  Widget _buildCategoryPicker() {
+    final options = _categoryOptions;
+    return DropdownButtonFormField<int?>(
+      initialValue: _categoryId,
+      isExpanded: true,
+      decoration: InputDecoration(
+        labelText: 'Category',
+        helperText: widget.categories.isEmpty
+            ? "Categories appear once they've loaded while online."
+            : null,
+      ),
+      items: [
+        const DropdownMenuItem<int?>(value: null, child: Text('No category')),
+        for (final category in options)
+          DropdownMenuItem<int?>(
+            value: category.id,
+            child: Row(
+              children: [
+                CategoryAvatar(category: category),
+                const SizedBox(width: AppSpacing.sm),
+                Expanded(
+                  child: Text(
+                    category.name ?? 'Category ${category.id}',
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
+      onChanged: (value) => setState(() => _categoryId = value),
     );
   }
 }

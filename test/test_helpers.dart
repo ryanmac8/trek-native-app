@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:trek/auth/session_token.dart';
 import 'package:trek/auth/token_storage.dart';
 import 'package:trek/config/server_config.dart';
+import 'package:trek/places/categories_local_store.dart';
 import 'package:trek/places/pending_place_op.dart';
 import 'package:trek/places/place.dart';
 import 'package:trek/places/places_local_store.dart';
@@ -95,4 +96,20 @@ class InMemoryPlacesLocalStore implements PlacesLocalStore {
   @override
   Future<void> writePending(String tripId, List<PendingPlaceOp> ops) async =>
       _pendingByTripId[tripId] = List.of(ops);
+}
+
+/// In-memory [CategoriesLocalStore] fake — avoids the `shared_preferences`
+/// platform channel in widget/repository tests.
+class InMemoryCategoriesLocalStore implements CategoriesLocalStore {
+  InMemoryCategoriesLocalStore({List<PlaceCategoryRef> initial = const []})
+    : _categories = List.of(initial);
+
+  List<PlaceCategoryRef> _categories;
+
+  @override
+  Future<List<PlaceCategoryRef>> read() async => List.of(_categories);
+
+  @override
+  Future<void> write(List<PlaceCategoryRef> categories) async =>
+      _categories = List.of(categories);
 }

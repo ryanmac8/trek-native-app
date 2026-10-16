@@ -36,6 +36,15 @@ class PlaceCategoryRef {
 
   factory PlaceCategoryRef.fromCacheJson(Map<String, dynamic> json) =>
       PlaceCategoryRef.fromJson(json);
+
+  /// [icon] if it's an emoji (the seeded defaults use emoji), else `null`.
+  /// Categories created from Trek's web client store a Lucide icon name
+  /// such as `MapPin` instead, which isn't displayable as text.
+  String? get emoji {
+    final value = icon?.trim();
+    if (value == null || value.isEmpty) return null;
+    return RegExp(r'^[A-Za-z0-9_-]+$').hasMatch(value) ? null : value;
+  }
 }
 
 /// Where a cached [Place] stands relative to the server — local-only state,
@@ -160,7 +169,9 @@ class Place {
       name: (fields['name'] as String?) ?? name,
       description: pick('description', description),
       address: pick('address', address),
-      category: category,
+      category: fields.containsKey('category_id')
+          ? _categoryFor(fields['category_id'] as int?)
+          : category,
       price: fields.containsKey('price')
           ? (fields['price'] as num?)?.toDouble()
           : price,
@@ -173,6 +184,16 @@ class Place {
 
   Place withSyncStatus(PlaceSyncStatus status) =>
       applyFields(const {}, status: status);
+
+  /// The category for a request body's `category_id`: unchanged if it's the
+  /// current one, otherwise a bare id reference — the request body carries
+  /// no name/color, so the UI resolves those from the category list until
+  /// the server's response replaces this place.
+  PlaceCategoryRef? _categoryFor(int? categoryId) {
+    if (categoryId == null) return null;
+    if (categoryId == category?.id) return category;
+    return PlaceCategoryRef(id: categoryId);
+  }
 }
 
 /// The user-editable fields of a place, as entered in the place form. Turns
@@ -182,6 +203,7 @@ class PlaceInput {
     required this.name,
     this.description,
     this.address,
+    this.categoryId,
     this.price,
     this.currency,
     this.notes,
@@ -191,6 +213,7 @@ class PlaceInput {
     name: place.name,
     description: place.description,
     address: place.address,
+    categoryId: place.category?.id,
     price: place.price,
     currency: place.currency,
     notes: place.notes,
@@ -199,6 +222,10 @@ class PlaceInput {
   final String name;
   final String? description;
   final String? address;
+
+  /// The chosen category's id (see `CategoriesRepository`), or `null` for
+  /// no category.
+  final int? categoryId;
   final double? price;
   final String? currency;
   final String? notes;
@@ -207,6 +234,7 @@ class PlaceInput {
     'name': name.trim(),
     'description': _blankToNull(description),
     'address': _blankToNull(address),
+    'category_id': categoryId,
     'price': price,
     'currency': _blankToNull(currency)?.toUpperCase(),
     'notes': _blankToNull(notes),
